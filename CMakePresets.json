@@ -1,0 +1,60 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Visual Studio 2026 (x64)",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build-vs",
+      "environment": {
+        "VCPKG_ROOT": "C:/vcpkg"
+      }
+    },
+    {
+      "name": "ninja",
+      "displayName": "Ninja (single config, Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      },
+      "environment": {
+        "VCPKG_ROOT": "C:/vcpkg"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "default",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "default",
+      "configuration": "Release"
+    },
+    {
+      "name": "ninja",
+      "configurePreset": "ninja"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "default",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ninja",
+      "configurePreset": "ninja",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
