@@ -419,6 +419,105 @@ TEST(TensorBroadcast, OperandsAreNotMutated) {
     EXPECT_EQ(b.shape(), (std::vector<size_t>{3}));
 }
 
+// --- storage sharing --------------------------------------------------------
+
+TEST(TensorStorage, CopyIsShallow) {
+    Tensor<float> a({2, 3}, 1.0f);
+    Tensor<float> b = a;
+
+    EXPECT_TRUE(a.shares_storage(b));
+    EXPECT_EQ(a.data(), b.data());
+
+    b(0, 0) = 99.0f;
+    EXPECT_FLOAT_EQ(a(0, 0), 99.0f) << "shallow copy must alias the original";
+}
+
+TEST(TensorStorage, CloneIsDeep) {
+    Tensor<float> a({2, 3}, 1.0f);
+    Tensor<float> b = a.clone();
+
+    EXPECT_FALSE(a.shares_storage(b));
+    EXPECT_NE(a.data(), b.data());
+
+    b(0, 0) = 99.0f;
+    EXPECT_FLOAT_EQ(a(0, 0), 1.0f) << "clone must not alias the original";
+    EXPECT_FLOAT_EQ(b(0, 0), 99.0f);
+}
+
+TEST(TensorStorage, ClonePreservesShapeAndContents) {
+    Tensor<float> a({2, 3});
+    iota_fill(a);
+
+    const Tensor<float> b = a.clone();
+
+    EXPECT_EQ(b.shape(), a.shape());
+    EXPECT_EQ(b.strides(), a.strides());
+    EXPECT_EQ(b.size(), a.size());
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            EXPECT_FLOAT_EQ(b(i, j), a(i, j));
+        }
+    }
+}
+
+TEST(TensorStorage, UseCountTracksSharers) {
+    Tensor<float> a({2, 2}, 1.0f);
+    EXPECT_EQ(a.use_count(), 1);
+    {
+        Tensor<float> b = a;
+        EXPECT_EQ(a.use_count(), 2);
+        Tensor<float> c = a.clone();
+        EXPECT_EQ(a.use_count(), 2);
+        EXPECT_EQ(c.use_count(), 1);
+    }
+    EXPECT_EQ(a.use_count(), 1);
+}
+
+TEST(TensorStorage, DefaultConstructedHasNoBuffer) {
+    Tensor<float> t;
+    EXPECT_EQ(t.size(), 0u);
+    EXPECT_EQ(t.data(), nullptr);
+    EXPECT_EQ(t.use_count(), 0);
+    EXPECT_NO_THROW(t.fill(1.0f));
+
+    const Tensor<float> c = t.clone();
+    EXPECT_EQ(c.size(), 0u);
+}
+
+TEST(TensorStorage, ScalarOperatorsDoNotAliasOperand) {
+    Tensor<float> a({2, 2}, 3.0f);
+
+    const Tensor<float> doubled = a * 2.0f;
+    EXPECT_FLOAT_EQ(doubled(0, 0), 6.0f);
+    EXPECT_FLOAT_EQ(a(0, 0), 3.0f) << "operand must be untouched";
+
+    const Tensor<float> left = 2.0f * a;
+    EXPECT_FLOAT_EQ(left(0, 0), 6.0f);
+    EXPECT_FLOAT_EQ(a(0, 0), 3.0f);
+
+    const Tensor<float> halved = a / 3.0f;
+    EXPECT_FLOAT_EQ(halved(0, 0), 1.0f);
+    EXPECT_FLOAT_EQ(a(0, 0), 3.0f);
+}
+
+TEST(TensorStorage, ElementwiseOperatorsProduceFreshStorage) {
+    Tensor<float> a({2, 2}, 1.0f);
+    Tensor<float> b({2, 2}, 2.0f);
+
+    const Tensor<float> c = a + b;
+    EXPECT_FALSE(c.shares_storage(a));
+    EXPECT_FALSE(c.shares_storage(b));
+}
+
+TEST(TensorStorage, TransposeProducesFreshStorage) {
+    Tensor<float> a({2, 3});
+    iota_fill(a);
+
+    const Tensor<float> t = a.transpose();
+    EXPECT_FALSE(t.shares_storage(a));
+    EXPECT_FLOAT_EQ(t(2, 1), a(1, 2));
+}
+
 // --- element type -----------------------------------------------------------
 
 TEST(TensorElementType, WorksWithDouble) {

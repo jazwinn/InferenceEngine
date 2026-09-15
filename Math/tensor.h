@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <memory>
 #include <span>
 #include <type_traits>
 #include <vector>
@@ -58,26 +59,30 @@ namespace math {
                 }
                 total_size *= d;
             }
-            m_data.resize(total_size);
+            m_data = std::make_shared<std::vector<T>>(total_size, initial_value);
             m_stride.resize(m_shape.size());
             size_t stride_value = 1;
             for (size_t i = m_shape.size(); i-- > 0; ) {
                 m_stride[i] = stride_value;
                 stride_value *= m_shape[i];
             }
-
-            fill(initial_value);
         }
 
 
         void fill(const T& value) {
-            std::fill(m_data.begin(), m_data.end(), value);
+            if (!m_data) {
+                return;
+            }
+            std::fill(m_data->begin(), m_data->end(), value);
         }
         void random_fill(T min_value = T(0), T max_value = T(1)) {
             static std::random_device rd;
             static std::mt19937 gen(rd());
             std::uniform_real_distribution<T> dis(min_value, max_value);
-            std::generate(m_data.begin(), m_data.end(), [&dis, &gen]() {
+            if (!m_data) {
+                return;
+            }
+            std::generate(m_data->begin(), m_data->end(), [&dis]() {
                 return dis(gen);
             });
         }
@@ -85,31 +90,45 @@ namespace math {
         const std::vector<size_t>& shape() const noexcept { return m_shape; }
         const std::vector<size_t>& strides() const noexcept { return m_stride; }
         size_t rank() const noexcept { return m_shape.size(); }
-        size_t size() const noexcept { return m_data.size(); }
+        size_t size() const noexcept { return m_data ? m_data->size() : 0; }
 
 
         template <typename... Idx>
         requires (std::is_convertible_v<Idx, size_t> && ...)
         T& operator()(Idx... indices) {
-            return m_data[flatten(indices...)];
+            return (*m_data)[flatten(indices...)];
         }
 
         template <typename... Idx>
         requires (std::is_convertible_v<Idx, size_t> && ...)
         const T& operator()(Idx... indices) const {
-            return m_data[flatten(indices...)];
+            return (*m_data)[flatten(indices...)];
         }
 
         T& operator()(std::span<const size_t> indices) {
-            return m_data[flatten(indices)];
+            return (*m_data)[flatten(indices)];
         }
 
         const T& operator()(std::span<const size_t> indices) const {
-            return m_data[flatten(indices)];
+            return (*m_data)[flatten(indices)];
         }
 
-        T* data() noexcept { return m_data.data(); }
-        const T* data() const noexcept { return m_data.data(); }
+        T* data() noexcept { return m_data ? m_data->data() : nullptr; }
+        const T* data() const noexcept { return m_data ? m_data->data() : nullptr; }
+
+        bool shares_storage(const Tensor<T>& other) const noexcept {
+            return m_data && m_data == other.m_data;
+        }
+
+        long use_count() const noexcept { return m_data ? m_data.use_count() : 0; }
+
+        Tensor<T> clone() const {
+            Tensor<T> copy;
+            copy.m_shape = m_shape;
+            copy.m_stride = m_stride;
+            copy.m_data = m_data ? std::make_shared<std::vector<T>>(*m_data) : nullptr;
+            return copy;
+        }
 
         Tensor<T>& operator+=(const Tensor<T>& other) {
             return broadcast_into(other, [](T& a, T b) { a += b; });
@@ -133,8 +152,8 @@ namespace math {
         }
 
         Tensor<T>& operator*=(const T& scalar) {
-            for (size_t i = 0; i < m_data.size(); ++i) {
-                m_data[i] *= scalar;
+            for (size_t i = 0; i < size(); ++i) {
+                (*m_data)[i] *= scalar;
             }
             return *this;
         }
@@ -143,8 +162,8 @@ namespace math {
             if (scalar == T(0)) {
                 throw std::invalid_argument("Division by zero.");
             }
-            for (size_t i = 0; i < m_data.size(); ++i) {
-                m_data[i] /= scalar;
+            for (size_t i = 0; i < size(); ++i) {
+                (*m_data)[i] /= scalar;
             }
             return *this;
         }
@@ -198,8 +217,8 @@ namespace math {
             std::vector<size_t> index(rank, 0);
             size_t offset = 0;
 
-            for (size_t i = 0; i < m_data.size(); ++i) {
-                op(m_data[i], other.m_data[offset]);
+            for (size_t i = 0; i < size(); ++i) {
+                op((*m_data)[i], (*other.m_data)[offset]);
 
                 for (size_t axis = rank; axis-- > 0; ) {
                     ++index[axis];
@@ -216,7 +235,7 @@ namespace math {
 
         std::vector<size_t> m_shape;
         std::vector<size_t> m_stride;
-        std::vector<T> m_data;
+        std::shared_ptr<std::vector<T>> m_data;
     };
 
     template <typename T, typename Op>
@@ -282,21 +301,21 @@ namespace math {
 
     template <typename T = float>
     Tensor<T> operator*(const Tensor<T>& lhs, const T& scalar) {
-        Tensor<T> result = lhs;
+        Tensor<T> result = lhs.clone();
         result *= scalar;
         return result;
     }
 
     template <typename T = float>
     Tensor<T> operator*(const T& scalar, const Tensor<T>& rhs) {
-        Tensor<T> result = rhs;
+        Tensor<T> result = rhs.clone();
         result *= scalar;
         return result;
     }
 
     template <typename T = float>
     Tensor<T> operator/(const Tensor<T>& lhs, const T& scalar) {
-        Tensor<T> result = lhs;
+        Tensor<T> result = lhs.clone();
         result /= scalar;
         return result;
     }
