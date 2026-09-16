@@ -16,6 +16,7 @@ else()
 endif()
 
 add_subdirectory(Math)
+add_subdirectory(NeuralNet)
 
 include(CTest)
 if(BUILD_TESTING AND PROJECT_IS_TOP_LEVEL)
