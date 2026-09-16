@@ -4,7 +4,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "Math/tensor.h"
+
+#include "Math/Tensor.h"
 
 namespace nn{
 

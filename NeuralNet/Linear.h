@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Math/tensor.h"
+#include "Math/Tensor.h"
 #include "Module.h"
 
 #include <memory>
