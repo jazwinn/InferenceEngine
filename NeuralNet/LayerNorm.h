@@ -31,17 +31,17 @@ namespace nn{
 
             gamma = std::make_shared<Tensor<T>>(m_normalized_shape, T(1));
             beta = std::make_shared<Tensor<T>>(m_normalized_shape, T(0));
-            this->register_parameter("gamma", gamma);
-            this->register_parameter("beta", beta);
+            this->RegisterParameter("gamma", gamma);
+            this->RegisterParameter("beta", beta);
         }
 
         explicit LayerNorm(size_t feature_size, T epsilon = static_cast<T>(1e-5)) :
             LayerNorm(std::vector<size_t>{feature_size}, epsilon) {}
 
         LayerNorm(Tensor<T> initial_gamma, Tensor<T> initial_beta, T epsilon = static_cast<T>(1e-5)) :
-            m_normalized_shape(initial_gamma.shape()),
+            m_normalized_shape(initial_gamma.Shape()),
             m_epsilon(epsilon) {
-            if (initial_gamma.shape() != initial_beta.shape()) {
+            if (initial_gamma.Shape() != initial_beta.Shape()) {
                 throw std::invalid_argument("LayerNorm: gamma and beta must have the same shape.");
             }
             if (m_normalized_shape.empty()) {
@@ -53,12 +53,12 @@ namespace nn{
 
             gamma = std::make_shared<Tensor<T>>(std::move(initial_gamma));
             beta = std::make_shared<Tensor<T>>(std::move(initial_beta));
-            this->register_parameter("gamma", gamma);
-            this->register_parameter("beta", beta);
+            this->RegisterParameter("gamma", gamma);
+            this->RegisterParameter("beta", beta);
         }
 
-        Tensor<T> forward(const Tensor<T>& input) override {
-            const std::vector<size_t>& shape = input.shape();
+        Tensor<T> Forward(const Tensor<T>& input) override {
+            const std::vector<size_t>& shape = input.Shape();
             const size_t axes = m_normalized_shape.size();
 
             if (shape.size() < axes) {
@@ -71,18 +71,18 @@ namespace nn{
                 }
             }
 
-            // clone() compacts, so the flat walk below is valid even when the
+            // Clone() compacts, so the flat walk below is valid even when the
             // caller hands us a strided view.
-            Tensor<T> output = input.clone();
-            const Tensor<T> gamma_c = gamma->contiguous();
-            const Tensor<T> beta_c = beta->contiguous();
+            Tensor<T> output = input.Clone();
+            const Tensor<T> gamma_c = gamma->Contiguous();
+            const Tensor<T> beta_c = beta->Contiguous();
 
-            T* out = output.data();
-            const T* g = gamma_c.data();
-            const T* b = beta_c.data();
+            T* out = output.Data();
+            const T* g = gamma_c.Data();
+            const T* b = beta_c.Data();
 
             const size_t inner = m_normalized_size;
-            const size_t outer = output.size() / inner;
+            const size_t outer = output.Size() / inner;
 
             for (size_t o = 0; o < outer; ++o) {
                 T* block = out + o * inner;
@@ -109,9 +109,9 @@ namespace nn{
             return output;
         }
 
-        const std::vector<size_t>& normalized_shape() const noexcept { return m_normalized_shape; }
-        size_t normalized_size() const noexcept { return m_normalized_size; }
-        T epsilon() const noexcept { return m_epsilon; }
+        const std::vector<size_t>& NormalizedShape() const noexcept { return m_normalized_shape; }
+        size_t NormalizedSize() const noexcept { return m_normalized_size; }
+        T Epsilon() const noexcept { return m_epsilon; }
 
         std::shared_ptr<Tensor<T>> gamma;
         std::shared_ptr<Tensor<T>> beta;

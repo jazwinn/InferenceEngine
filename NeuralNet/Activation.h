@@ -15,10 +15,10 @@ namespace activation {
     template <typename T>
     class ReLU : public Module<T> {
     public:
-        Tensor<T> forward(const Tensor<T>& input) override {
-            Tensor<T> output = input.clone();
+        Tensor<T> Forward(const Tensor<T>& input) override {
+            Tensor<T> output = input.Clone();
 
-            std::for_each(output.data(), output.data() + output.size(), [](T& value) {
+            std::for_each(output.Data(), output.Data() + output.Size(), [](T& value) {
                 if (value < T(0)) {
                     value = T(0);
                 }
@@ -31,10 +31,10 @@ namespace activation {
     template <typename T>
     class Sigmoid : public Module<T> {
     public:
-        Tensor<T> forward(const Tensor<T>& input) override {
-            Tensor<T> output = input.clone();
+        Tensor<T> Forward(const Tensor<T>& input) override {
+            Tensor<T> output = input.Clone();
 
-            std::for_each(output.data(), output.data() + output.size(), [](T& value) {
+            std::for_each(output.Data(), output.Data() + output.Size(), [](T& value) {
                 value = T(1) / (T(1) + std::exp(-value));
             });
 
@@ -45,10 +45,10 @@ namespace activation {
     template <typename T>
     class Tanh : public Module<T> {
     public:
-        Tensor<T> forward(const Tensor<T>& input) override {
-            Tensor<T> output = input.clone();
+        Tensor<T> Forward(const Tensor<T>& input) override {
+            Tensor<T> output = input.Clone();
 
-            std::for_each(output.data(), output.data() + output.size(), [](T& value) {
+            std::for_each(output.Data(), output.Data() + output.Size(), [](T& value) {
                 value = std::tanh(value);
             });
 
@@ -59,17 +59,17 @@ namespace activation {
     template <typename T>
     class Softmax : public Module<T> {
     public:
-        Tensor<T> forward(const Tensor<T>& input) override {
-            if (input.rank() != 2) {
+        Tensor<T> Forward(const Tensor<T>& input) override {
+            if (input.Rank() != 2) {
                 throw std::invalid_argument("Softmax expects a rank-2 tensor (batch_size, num_classes).");
             }
 
-            Tensor<T> output = input.clone();
-            const size_t batch_size = input.shape()[0];
-            const size_t num_classes = input.shape()[1];
+            Tensor<T> output = input.Clone();
+            const size_t batch_size = input.Shape()[0];
+            const size_t num_classes = input.Shape()[1];
 
             for (size_t i = 0; i < batch_size; ++i) {
-                T max_val = *std::max_element(output.data() + i * num_classes, output.data() + (i + 1) * num_classes);
+                T max_val = *std::max_element(output.Data() + i * num_classes, output.Data() + (i + 1) * num_classes);
                 T sum_exp = T(0);
 
                 for (size_t j = 0; j < num_classes; ++j) {

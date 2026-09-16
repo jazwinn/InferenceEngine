@@ -12,8 +12,8 @@ namespace {
 
 // Fills a tensor with 1, 2, 3, ... in row-major order.
 template <typename T>
-void iota_fill(Tensor<T>& t) {
-    const auto& shape = t.shape();
+void IotaFill(Tensor<T>& t) {
+    const auto& shape = t.Shape();
     T next = T(1);
     if (shape.size() == 1) {
         for (size_t i = 0; i < shape[0]; ++i) t(i) = next++;
@@ -51,9 +51,9 @@ TEST(TensorConstruction, InitialValueFillsEveryElement) {
 
 TEST(TensorConstruction, ShapeAndSizeReflectDimensions) {
     Tensor<float> t({2, 3, 4});
-    EXPECT_EQ(t.shape(), (std::vector<size_t>{2, 3, 4}));
-    EXPECT_EQ(t.rank(), 3u);
-    EXPECT_EQ(t.size(), 24u);
+    EXPECT_EQ(t.Shape(), (std::vector<size_t>{2, 3, 4}));
+    EXPECT_EQ(t.Rank(), 3u);
+    EXPECT_EQ(t.Size(), 24u);
 }
 
 TEST(TensorConstruction, RejectsZeroDimension) {
@@ -63,11 +63,11 @@ TEST(TensorConstruction, RejectsZeroDimension) {
 
 TEST(TensorConstruction, SupportsRankOneAndThree) {
     Tensor<float> v({5}, 1.0f);
-    EXPECT_EQ(v.size(), 5u);
+    EXPECT_EQ(v.Size(), 5u);
     EXPECT_FLOAT_EQ(v(4), 1.0f);
 
     Tensor<float> c({2, 3, 4}, 2.0f);
-    EXPECT_EQ(c.size(), 24u);
+    EXPECT_EQ(c.Size(), 24u);
     EXPECT_FLOAT_EQ(c(1, 2, 3), 2.0f);
 }
 
@@ -85,7 +85,7 @@ TEST(TensorAccess, WritesAreReadBack) {
 
 TEST(TensorAccess, StorageIsRowMajor) {
     Tensor<float> t({2, 3});
-    iota_fill(t);
+    IotaFill(t);
 
     // Last dimension contiguous: (0,0)=1 .. (0,2)=3, (1,0)=4 .. (1,2)=6.
     EXPECT_FLOAT_EQ(t(0, 0), 1.0f);
@@ -105,7 +105,7 @@ TEST(TensorAccess, ConstOverloadReads) {
 
 TEST(TensorAccess, SpanOverloadMatchesVariadic) {
     Tensor<float> t({2, 3});
-    iota_fill(t);
+    IotaFill(t);
 
     std::vector<size_t> idx{1, 2};
     EXPECT_FLOAT_EQ(t(idx), t(1, 2));
@@ -118,8 +118,8 @@ TEST(TensorAccess, SpanOverloadMatchesVariadic) {
 
 TEST(TensorFill, OverwritesPreviousContents) {
     Tensor<float> t({2, 3});
-    iota_fill(t);
-    t.fill(-1.0f);
+    IotaFill(t);
+    t.Fill(-1.0f);
 
     for (size_t i = 0; i < 2; ++i) {
         for (size_t j = 0; j < 3; ++j) {
@@ -241,13 +241,13 @@ TEST(TensorMatMul, KnownProduct) {
     // [4 5 6] x [3 4] = [49 64]
     //           [5 6]
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
     Tensor<float> b({3, 2});
-    iota_fill(b);
+    IotaFill(b);
 
     const Tensor<float> c = math::MatMul(a, b);
 
-    EXPECT_EQ(c.shape(), (std::vector<size_t>{2, 2}));
+    EXPECT_EQ(c.Shape(), (std::vector<size_t>{2, 2}));
     EXPECT_FLOAT_EQ(c(0, 0), 22.0f);
     EXPECT_FLOAT_EQ(c(0, 1), 28.0f);
     EXPECT_FLOAT_EQ(c(1, 0), 49.0f);
@@ -256,7 +256,7 @@ TEST(TensorMatMul, KnownProduct) {
 
 TEST(TensorMatMul, IdentityIsNeutral) {
     Tensor<float> a({2, 2});
-    iota_fill(a);
+    IotaFill(a);
 
     Tensor<float> id({2, 2}, 0.0f);
     id(0, 0) = 1.0f;
@@ -271,7 +271,7 @@ TEST(TensorMatMul, IdentityIsNeutral) {
 
 TEST(TensorMatMul, IsNotCommutative) {
     Tensor<float> a({2, 2});
-    iota_fill(a);
+    IotaFill(a);
     Tensor<float> b({2, 2}, 2.0f);
     b(0, 1) = 5.0f;
 
@@ -298,7 +298,7 @@ TEST(TensorMatMul, NonSquareShapesPropagate) {
     Tensor<float> b({2, 7}, 1.0f);
     const Tensor<float> c = math::MatMul(a, b);
 
-    EXPECT_EQ(c.shape(), (std::vector<size_t>{4, 7}));
+    EXPECT_EQ(c.Shape(), (std::vector<size_t>{4, 7}));
     EXPECT_FLOAT_EQ(c(0, 0), 2.0f);   // sum over the shared dimension of 2
 }
 
@@ -313,7 +313,7 @@ TEST(TensorBroadcast, BiasAddsAlongLastAxis) {
 
     const Tensor<float> r = out + bias;
 
-    EXPECT_EQ(r.shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(r.Shape(), (std::vector<size_t>{2, 3}));
     EXPECT_FLOAT_EQ(r(0, 0), 11.0f);
     EXPECT_FLOAT_EQ(r(0, 2), 31.0f);
     EXPECT_FLOAT_EQ(r(1, 0), 11.0f);
@@ -328,7 +328,7 @@ TEST(TensorBroadcast, ColumnVectorBroadcastsAlongRows) {
 
     const Tensor<float> r = a + col;
 
-    EXPECT_EQ(r.shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(r.Shape(), (std::vector<size_t>{2, 3}));
     EXPECT_FLOAT_EQ(r(0, 0), 5.0f);
     EXPECT_FLOAT_EQ(r(0, 2), 5.0f);
     EXPECT_FLOAT_EQ(r(1, 0), 7.0f);
@@ -337,14 +337,14 @@ TEST(TensorBroadcast, ColumnVectorBroadcastsAlongRows) {
 
 TEST(TensorBroadcast, BothOperandsExpand) {
     Tensor<float> row({1, 3});
-    iota_fill(row);
+    IotaFill(row);
     Tensor<float> col({2, 1});
     col(0, 0) = 10.0f;
     col(1, 0) = 20.0f;
 
     const Tensor<float> r = row + col;
 
-    EXPECT_EQ(r.shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(r.Shape(), (std::vector<size_t>{2, 3}));
     EXPECT_FLOAT_EQ(r(0, 0), 11.0f);
     EXPECT_FLOAT_EQ(r(0, 2), 13.0f);
     EXPECT_FLOAT_EQ(r(1, 0), 21.0f);
@@ -357,7 +357,7 @@ TEST(TensorBroadcast, LowerRankPadsOnTheLeft) {
 
     const Tensor<float> r = a * b;
 
-    EXPECT_EQ(r.shape(), (std::vector<size_t>{2, 2, 3}));
+    EXPECT_EQ(r.Shape(), (std::vector<size_t>{2, 2, 3}));
     EXPECT_FLOAT_EQ(r(0, 0, 0), 2.0f);
     EXPECT_FLOAT_EQ(r(1, 1, 2), 2.0f);
 }
@@ -368,7 +368,7 @@ TEST(TensorBroadcast, SingleElementActsLikeAScalar) {
 
     const Tensor<float> r = a / one;
 
-    EXPECT_EQ(r.shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(r.Shape(), (std::vector<size_t>{2, 3}));
     EXPECT_FLOAT_EQ(r(1, 2), 2.0f);
 }
 
@@ -394,7 +394,7 @@ TEST(TensorBroadcast, CompoundBroadcastsRightOperand) {
 
     out += bias;
 
-    EXPECT_EQ(out.shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(out.Shape(), (std::vector<size_t>{2, 3}));
     EXPECT_FLOAT_EQ(out(0, 0), 11.0f);
     EXPECT_FLOAT_EQ(out(1, 2), 11.0f);
 }
@@ -416,7 +416,7 @@ TEST(TensorBroadcast, OperandsAreNotMutated) {
 
     EXPECT_FLOAT_EQ(a(0, 0), 1.0f);
     EXPECT_FLOAT_EQ(b(0), 2.0f);
-    EXPECT_EQ(b.shape(), (std::vector<size_t>{3}));
+    EXPECT_EQ(b.Shape(), (std::vector<size_t>{3}));
 }
 
 // --- storage sharing --------------------------------------------------------
@@ -425,8 +425,8 @@ TEST(TensorStorage, CopyIsShallow) {
     Tensor<float> a({2, 3}, 1.0f);
     Tensor<float> b = a;
 
-    EXPECT_TRUE(a.shares_storage(b));
-    EXPECT_EQ(a.data(), b.data());
+    EXPECT_TRUE(a.SharesStorage(b));
+    EXPECT_EQ(a.Data(), b.Data());
 
     b(0, 0) = 99.0f;
     EXPECT_FLOAT_EQ(a(0, 0), 99.0f) << "shallow copy must alias the original";
@@ -434,10 +434,10 @@ TEST(TensorStorage, CopyIsShallow) {
 
 TEST(TensorStorage, CloneIsDeep) {
     Tensor<float> a({2, 3}, 1.0f);
-    Tensor<float> b = a.clone();
+    Tensor<float> b = a.Clone();
 
-    EXPECT_FALSE(a.shares_storage(b));
-    EXPECT_NE(a.data(), b.data());
+    EXPECT_FALSE(a.SharesStorage(b));
+    EXPECT_NE(a.Data(), b.Data());
 
     b(0, 0) = 99.0f;
     EXPECT_FLOAT_EQ(a(0, 0), 1.0f) << "clone must not alias the original";
@@ -446,13 +446,13 @@ TEST(TensorStorage, CloneIsDeep) {
 
 TEST(TensorStorage, ClonePreservesShapeAndContents) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> b = a.clone();
+    const Tensor<float> b = a.Clone();
 
-    EXPECT_EQ(b.shape(), a.shape());
-    EXPECT_EQ(b.strides(), a.strides());
-    EXPECT_EQ(b.size(), a.size());
+    EXPECT_EQ(b.Shape(), a.Shape());
+    EXPECT_EQ(b.Strides(), a.Strides());
+    EXPECT_EQ(b.Size(), a.Size());
     for (size_t i = 0; i < 2; ++i) {
         for (size_t j = 0; j < 3; ++j) {
             EXPECT_FLOAT_EQ(b(i, j), a(i, j));
@@ -462,26 +462,26 @@ TEST(TensorStorage, ClonePreservesShapeAndContents) {
 
 TEST(TensorStorage, UseCountTracksSharers) {
     Tensor<float> a({2, 2}, 1.0f);
-    EXPECT_EQ(a.use_count(), 1);
+    EXPECT_EQ(a.UseCount(), 1);
     {
         Tensor<float> b = a;
-        EXPECT_EQ(a.use_count(), 2);
-        Tensor<float> c = a.clone();
-        EXPECT_EQ(a.use_count(), 2);
-        EXPECT_EQ(c.use_count(), 1);
+        EXPECT_EQ(a.UseCount(), 2);
+        Tensor<float> c = a.Clone();
+        EXPECT_EQ(a.UseCount(), 2);
+        EXPECT_EQ(c.UseCount(), 1);
     }
-    EXPECT_EQ(a.use_count(), 1);
+    EXPECT_EQ(a.UseCount(), 1);
 }
 
 TEST(TensorStorage, DefaultConstructedHasNoBuffer) {
     Tensor<float> t;
-    EXPECT_EQ(t.size(), 0u);
-    EXPECT_EQ(t.data(), nullptr);
-    EXPECT_EQ(t.use_count(), 0);
-    EXPECT_NO_THROW(t.fill(1.0f));
+    EXPECT_EQ(t.Size(), 0u);
+    EXPECT_EQ(t.Data(), nullptr);
+    EXPECT_EQ(t.UseCount(), 0);
+    EXPECT_NO_THROW(t.Fill(1.0f));
 
-    const Tensor<float> c = t.clone();
-    EXPECT_EQ(c.size(), 0u);
+    const Tensor<float> c = t.Clone();
+    EXPECT_EQ(c.Size(), 0u);
 }
 
 TEST(TensorStorage, ScalarOperatorsDoNotAliasOperand) {
@@ -505,16 +505,16 @@ TEST(TensorStorage, ElementwiseOperatorsProduceFreshStorage) {
     Tensor<float> b({2, 2}, 2.0f);
 
     const Tensor<float> c = a + b;
-    EXPECT_FALSE(c.shares_storage(a));
-    EXPECT_FALSE(c.shares_storage(b));
+    EXPECT_FALSE(c.SharesStorage(a));
+    EXPECT_FALSE(c.SharesStorage(b));
 }
 
 TEST(TensorStorage, TransposeSharesStorage) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose();
-    EXPECT_TRUE(t.shares_storage(a));
+    const Tensor<float> t = a.Transpose();
+    EXPECT_TRUE(t.SharesStorage(a));
     EXPECT_FLOAT_EQ(t(2, 1), a(1, 2));
 }
 
@@ -522,11 +522,11 @@ TEST(TensorStorage, TransposeSharesStorage) {
 
 TEST(TensorTranspose, TwoDimensionalSwapsRowsAndColumns) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose();
+    const Tensor<float> t = a.Transpose();
 
-    EXPECT_EQ(t.shape(), (std::vector<size_t>{3, 2}));
+    EXPECT_EQ(t.Shape(), (std::vector<size_t>{3, 2}));
     for (size_t i = 0; i < 2; ++i) {
         for (size_t j = 0; j < 3; ++j) {
             EXPECT_FLOAT_EQ(t(j, i), a(i, j)) << "at (" << i << ", " << j << ")";
@@ -536,11 +536,11 @@ TEST(TensorTranspose, TwoDimensionalSwapsRowsAndColumns) {
 
 TEST(TensorTranspose, IsItsOwnInverseInTwoDimensions) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> back = a.transpose().transpose();
+    const Tensor<float> back = a.Transpose().Transpose();
 
-    EXPECT_EQ(back.shape(), a.shape());
+    EXPECT_EQ(back.Shape(), a.Shape());
     for (size_t i = 0; i < 2; ++i) {
         for (size_t j = 0; j < 3; ++j) {
             EXPECT_FLOAT_EQ(back(i, j), a(i, j));
@@ -550,11 +550,11 @@ TEST(TensorTranspose, IsItsOwnInverseInTwoDimensions) {
 
 TEST(TensorTranspose, NoArgumentReversesAllAxes) {
     Tensor<float> a({2, 3, 4});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose();
+    const Tensor<float> t = a.Transpose();
 
-    EXPECT_EQ(t.shape(), (std::vector<size_t>{4, 3, 2}));
+    EXPECT_EQ(t.Shape(), (std::vector<size_t>{4, 3, 2}));
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 3; ++j)
             for (size_t k = 0; k < 4; ++k)
@@ -563,11 +563,11 @@ TEST(TensorTranspose, NoArgumentReversesAllAxes) {
 
 TEST(TensorTranspose, SwapsTwoNamedAxes) {
     Tensor<float> a({2, 3, 4});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose(0, 2);
+    const Tensor<float> t = a.Transpose(0, 2);
 
-    EXPECT_EQ(t.shape(), (std::vector<size_t>{4, 3, 2}));
+    EXPECT_EQ(t.Shape(), (std::vector<size_t>{4, 3, 2}));
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 3; ++j)
             for (size_t k = 0; k < 4; ++k)
@@ -576,11 +576,11 @@ TEST(TensorTranspose, SwapsTwoNamedAxes) {
 
 TEST(TensorTranspose, SwapsInnerAxesLeavingBatchAlone) {
     Tensor<float> a({2, 3, 4});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose(1, 2);
+    const Tensor<float> t = a.Transpose(1, 2);
 
-    EXPECT_EQ(t.shape(), (std::vector<size_t>{2, 4, 3}));
+    EXPECT_EQ(t.Shape(), (std::vector<size_t>{2, 4, 3}));
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 3; ++j)
             for (size_t k = 0; k < 4; ++k)
@@ -589,27 +589,27 @@ TEST(TensorTranspose, SwapsInnerAxesLeavingBatchAlone) {
 
 TEST(TensorTranspose, SwappingAnAxisWithItselfIsIdentity) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose(1, 1);
+    const Tensor<float> t = a.Transpose(1, 1);
 
-    EXPECT_EQ(t.shape(), a.shape());
+    EXPECT_EQ(t.Shape(), a.Shape());
     EXPECT_FLOAT_EQ(t(1, 2), a(1, 2));
 }
 
 TEST(TensorTranspose, RejectsOutOfRangeDimension) {
     Tensor<float> a({2, 3}, 1.0f);
-    EXPECT_THROW(a.transpose(0, 2), std::invalid_argument);
-    EXPECT_THROW(a.transpose(5, 0), std::invalid_argument);
+    EXPECT_THROW(a.Transpose(0, 2), std::invalid_argument);
+    EXPECT_THROW(a.Transpose(5, 0), std::invalid_argument);
 }
 
 TEST(TensorPermute, ArbitraryReordering) {
     Tensor<float> a({2, 3, 4});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> p = a.permute(2, 0, 1);
+    const Tensor<float> p = a.Permute(2, 0, 1);
 
-    EXPECT_EQ(p.shape(), (std::vector<size_t>{4, 2, 3}));
+    EXPECT_EQ(p.Shape(), (std::vector<size_t>{4, 2, 3}));
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 3; ++j)
             for (size_t k = 0; k < 4; ++k)
@@ -618,43 +618,43 @@ TEST(TensorPermute, ArbitraryReordering) {
 
 TEST(TensorPermute, VectorAndVariadicFormsAgree) {
     Tensor<float> a({2, 3, 4});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> v = a.permute(std::vector<size_t>{1, 2, 0});
-    const Tensor<float> d = a.permute(1, 2, 0);
+    const Tensor<float> v = a.Permute(std::vector<size_t>{1, 2, 0});
+    const Tensor<float> d = a.Permute(1, 2, 0);
 
-    EXPECT_EQ(v.shape(), d.shape());
+    EXPECT_EQ(v.Shape(), d.Shape());
     EXPECT_FLOAT_EQ(v(2, 3, 1), d(2, 3, 1));
 }
 
 TEST(TensorPermute, IdentityPermutationIsAView) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> p = a.permute(0, 1);
+    const Tensor<float> p = a.Permute(0, 1);
 
-    EXPECT_EQ(p.shape(), a.shape());
-    EXPECT_TRUE(p.shares_storage(a));
-    EXPECT_TRUE(p.is_contiguous());
+    EXPECT_EQ(p.Shape(), a.Shape());
+    EXPECT_TRUE(p.SharesStorage(a));
+    EXPECT_TRUE(p.IsContiguous());
     EXPECT_FLOAT_EQ(p(1, 2), a(1, 2));
 }
 
 TEST(TensorPermute, RejectsWrongLengthOrRepeatedAxes) {
     Tensor<float> a({2, 3, 4}, 1.0f);
 
-    EXPECT_THROW(a.permute(0, 1), std::invalid_argument);
-    EXPECT_THROW(a.permute(0, 1, 1), std::invalid_argument);
-    EXPECT_THROW(a.permute(0, 1, 3), std::invalid_argument);
+    EXPECT_THROW(a.Permute(0, 1), std::invalid_argument);
+    EXPECT_THROW(a.Permute(0, 1, 1), std::invalid_argument);
+    EXPECT_THROW(a.Permute(0, 1, 3), std::invalid_argument);
 }
 
 TEST(TensorPermute, ResultIsUsableInArithmetic) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose();
+    const Tensor<float> t = a.Transpose();
     const Tensor<float> sum = t + t;
 
-    EXPECT_EQ(sum.shape(), (std::vector<size_t>{3, 2}));
+    EXPECT_EQ(sum.Shape(), (std::vector<size_t>{3, 2}));
     EXPECT_FLOAT_EQ(sum(2, 1), a(1, 2) * 2.0f);
 }
 
@@ -662,20 +662,20 @@ TEST(TensorPermute, ResultIsUsableInArithmetic) {
 
 TEST(TensorView, ReshapeSharesStorage) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> v = a.view(3, 2);
+    const Tensor<float> v = a.View(3, 2);
 
-    EXPECT_TRUE(v.shares_storage(a));
-    EXPECT_EQ(v.shape(), (std::vector<size_t>{3, 2}));
-    EXPECT_EQ(v.size(), a.size());
+    EXPECT_TRUE(v.SharesStorage(a));
+    EXPECT_EQ(v.Shape(), (std::vector<size_t>{3, 2}));
+    EXPECT_EQ(v.Size(), a.Size());
     EXPECT_FLOAT_EQ(v(0, 0), 1.0f);
     EXPECT_FLOAT_EQ(v(2, 1), 6.0f);
 }
 
 TEST(TensorView, WritesThroughReshapeAreVisible) {
     Tensor<float> a({2, 3}, 0.0f);
-    Tensor<float> v = a.view(6);
+    Tensor<float> v = a.View(6);
 
     v(5) = 42.0f;
     EXPECT_FLOAT_EQ(a(1, 2), 42.0f);
@@ -683,48 +683,48 @@ TEST(TensorView, WritesThroughReshapeAreVisible) {
 
 TEST(TensorView, ReshapeRejectsElementCountChange) {
     Tensor<float> a({2, 3}, 1.0f);
-    EXPECT_THROW(a.view(2, 2), std::invalid_argument);
-    EXPECT_THROW(a.view(7), std::invalid_argument);
+    EXPECT_THROW(a.View(2, 2), std::invalid_argument);
+    EXPECT_THROW(a.View(7), std::invalid_argument);
 }
 
 TEST(TensorView, ReshapeRejectsNonContiguousSource) {
     Tensor<float> a({2, 3}, 1.0f);
-    const Tensor<float> t = a.transpose();
+    const Tensor<float> t = a.Transpose();
 
-    EXPECT_FALSE(t.is_contiguous());
-    EXPECT_THROW(t.view(6), std::invalid_argument);
-    EXPECT_NO_THROW(t.clone().view(6));
+    EXPECT_FALSE(t.IsContiguous());
+    EXPECT_THROW(t.View(6), std::invalid_argument);
+    EXPECT_NO_THROW(t.Clone().View(6));
 }
 
 TEST(TensorView, SliceSelectsASubRange) {
     Tensor<float> a({4, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> s = a.slice(0, 1, 2);
+    const Tensor<float> s = a.Slice(0, 1, 2);
 
-    EXPECT_TRUE(s.shares_storage(a));
-    EXPECT_EQ(s.shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_TRUE(s.SharesStorage(a));
+    EXPECT_EQ(s.Shape(), (std::vector<size_t>{2, 3}));
     EXPECT_FLOAT_EQ(s(0, 0), a(1, 0));
     EXPECT_FLOAT_EQ(s(1, 2), a(2, 2));
 }
 
 TEST(TensorView, SliceAlongColumnsIsNonContiguous) {
     Tensor<float> a({2, 4});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> s = a.slice(1, 1, 2);
+    const Tensor<float> s = a.Slice(1, 1, 2);
 
-    EXPECT_FALSE(s.is_contiguous());
-    EXPECT_EQ(s.shape(), (std::vector<size_t>{2, 2}));
+    EXPECT_FALSE(s.IsContiguous());
+    EXPECT_EQ(s.Shape(), (std::vector<size_t>{2, 2}));
     EXPECT_FLOAT_EQ(s(0, 0), a(0, 1));
     EXPECT_FLOAT_EQ(s(1, 1), a(1, 2));
 }
 
 TEST(TensorView, WritesThroughSliceAreVisible) {
     Tensor<float> a({4, 3}, 0.0f);
-    Tensor<float> s = a.slice(0, 2, 2);
+    Tensor<float> s = a.Slice(0, 2, 2);
 
-    s.fill(9.0f);
+    s.Fill(9.0f);
 
     EXPECT_FLOAT_EQ(a(0, 0), 0.0f);
     EXPECT_FLOAT_EQ(a(1, 2), 0.0f);
@@ -734,20 +734,20 @@ TEST(TensorView, WritesThroughSliceAreVisible) {
 
 TEST(TensorView, SliceRejectsOutOfBounds) {
     Tensor<float> a({4, 3}, 1.0f);
-    EXPECT_THROW(a.slice(2, 0, 1), std::invalid_argument);
-    EXPECT_THROW(a.slice(0, 3, 2), std::invalid_argument);
-    EXPECT_THROW(a.slice(0, 0, 0), std::invalid_argument);
+    EXPECT_THROW(a.Slice(2, 0, 1), std::invalid_argument);
+    EXPECT_THROW(a.Slice(0, 3, 2), std::invalid_argument);
+    EXPECT_THROW(a.Slice(0, 0, 0), std::invalid_argument);
 }
 
 TEST(TensorView, RowDropsTheFirstAxis) {
     Tensor<float> a({3, 4});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> r = a.row(1);
+    const Tensor<float> r = a.Row(1);
 
-    EXPECT_TRUE(r.shares_storage(a));
-    EXPECT_EQ(r.shape(), (std::vector<size_t>{4}));
-    EXPECT_EQ(r.rank(), 1u);
+    EXPECT_TRUE(r.SharesStorage(a));
+    EXPECT_EQ(r.Shape(), (std::vector<size_t>{4}));
+    EXPECT_EQ(r.Rank(), 1u);
     for (size_t j = 0; j < 4; ++j) {
         EXPECT_FLOAT_EQ(r(j), a(1, j));
     }
@@ -755,30 +755,30 @@ TEST(TensorView, RowDropsTheFirstAxis) {
 
 TEST(TensorView, RowOfRankThreeYieldsAMatrix) {
     Tensor<float> a({2, 3, 4});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> r = a.row(1);
+    const Tensor<float> r = a.Row(1);
 
-    EXPECT_EQ(r.shape(), (std::vector<size_t>{3, 4}));
-    EXPECT_TRUE(r.is_contiguous());
+    EXPECT_EQ(r.Shape(), (std::vector<size_t>{3, 4}));
+    EXPECT_TRUE(r.IsContiguous());
     EXPECT_FLOAT_EQ(r(2, 3), a(1, 2, 3));
 }
 
 TEST(TensorView, RowRejectsOutOfRangeIndex) {
     Tensor<float> a({3, 4}, 1.0f);
-    EXPECT_THROW(a.row(3), std::invalid_argument);
+    EXPECT_THROW(a.Row(3), std::invalid_argument);
 }
 
 TEST(TensorView, TransposeViewSwapsStridesWithoutCopying) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose();
+    const Tensor<float> t = a.Transpose();
 
-    EXPECT_TRUE(t.shares_storage(a));
-    EXPECT_EQ(t.shape(), (std::vector<size_t>{3, 2}));
-    EXPECT_EQ(t.strides(), (std::vector<size_t>{1, 3}));
-    EXPECT_FALSE(t.is_contiguous());
+    EXPECT_TRUE(t.SharesStorage(a));
+    EXPECT_EQ(t.Shape(), (std::vector<size_t>{3, 2}));
+    EXPECT_EQ(t.Strides(), (std::vector<size_t>{1, 3}));
+    EXPECT_FALSE(t.IsContiguous());
 
     for (size_t i = 0; i < 2; ++i) {
         for (size_t j = 0; j < 3; ++j) {
@@ -789,15 +789,15 @@ TEST(TensorView, TransposeViewSwapsStridesWithoutCopying) {
 
 TEST(TensorView, PermuteMatchesItsCompactedForm) {
     Tensor<float> a({2, 3, 4});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> v = a.permute(2, 0, 1);
-    const Tensor<float> c = v.contiguous();
+    const Tensor<float> v = a.Permute(2, 0, 1);
+    const Tensor<float> c = v.Contiguous();
 
-    EXPECT_EQ(v.shape(), c.shape());
-    EXPECT_TRUE(v.shares_storage(a));
-    EXPECT_FALSE(c.shares_storage(a));
-    EXPECT_TRUE(c.is_contiguous());
+    EXPECT_EQ(v.Shape(), c.Shape());
+    EXPECT_TRUE(v.SharesStorage(a));
+    EXPECT_FALSE(c.SharesStorage(a));
+    EXPECT_TRUE(c.IsContiguous());
 
     for (size_t i = 0; i < 4; ++i)
         for (size_t j = 0; j < 2; ++j)
@@ -809,14 +809,14 @@ TEST(TensorView, PermuteMatchesItsCompactedForm) {
 
 TEST(TensorViewOps, CloneCompactsAView) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose();
-    const Tensor<float> c = t.clone();
+    const Tensor<float> t = a.Transpose();
+    const Tensor<float> c = t.Clone();
 
-    EXPECT_TRUE(c.is_contiguous());
-    EXPECT_FALSE(c.shares_storage(a));
-    EXPECT_EQ(c.size(), 6u);
+    EXPECT_TRUE(c.IsContiguous());
+    EXPECT_FALSE(c.SharesStorage(a));
+    EXPECT_EQ(c.Size(), 6u);
     for (size_t i = 0; i < 3; ++i) {
         for (size_t j = 0; j < 2; ++j) {
             EXPECT_FLOAT_EQ(c(i, j), t(i, j));
@@ -826,9 +826,9 @@ TEST(TensorViewOps, CloneCompactsAView) {
 
 TEST(TensorViewOps, FillTouchesOnlyTheView) {
     Tensor<float> a({3, 3}, 1.0f);
-    Tensor<float> middle = a.slice(1, 1, 1);
+    Tensor<float> middle = a.Slice(1, 1, 1);
 
-    middle.fill(7.0f);
+    middle.Fill(7.0f);
 
     for (size_t i = 0; i < 3; ++i) {
         EXPECT_FLOAT_EQ(a(i, 0), 1.0f);
@@ -839,7 +839,7 @@ TEST(TensorViewOps, FillTouchesOnlyTheView) {
 
 TEST(TensorViewOps, ScalarMultiplyTouchesOnlyTheView) {
     Tensor<float> a({2, 4}, 2.0f);
-    Tensor<float> half = a.slice(1, 0, 2);
+    Tensor<float> half = a.Slice(1, 0, 2);
 
     half *= 5.0f;
 
@@ -851,7 +851,7 @@ TEST(TensorViewOps, ScalarMultiplyTouchesOnlyTheView) {
 
 TEST(TensorViewOps, CompoundAssignWritesThroughAView) {
     Tensor<float> a({2, 3}, 1.0f);
-    Tensor<float> r = a.row(0);
+    Tensor<float> r = a.Row(0);
     Tensor<float> bias({3}, 10.0f);
 
     r += bias;
@@ -863,7 +863,7 @@ TEST(TensorViewOps, CompoundAssignWritesThroughAView) {
 
 TEST(TensorViewOps, CompoundAssignOnATransposedView) {
     Tensor<float> a({2, 3}, 0.0f);
-    Tensor<float> t = a.transpose();
+    Tensor<float> t = a.Transpose();
     Tensor<float> ones({3, 2}, 1.0f);
 
     t += ones;
@@ -877,13 +877,13 @@ TEST(TensorViewOps, CompoundAssignOnATransposedView) {
 
 TEST(TensorViewOps, ArithmeticReadsNonContiguousOperands) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose();
+    const Tensor<float> t = a.Transpose();
     const Tensor<float> sum = t + t;
 
-    EXPECT_EQ(sum.shape(), (std::vector<size_t>{3, 2}));
-    EXPECT_TRUE(sum.is_contiguous());
+    EXPECT_EQ(sum.Shape(), (std::vector<size_t>{3, 2}));
+    EXPECT_TRUE(sum.IsContiguous());
     for (size_t i = 0; i < 3; ++i) {
         for (size_t j = 0; j < 2; ++j) {
             EXPECT_FLOAT_EQ(sum(i, j), t(i, j) * 2.0f);
@@ -893,11 +893,11 @@ TEST(TensorViewOps, ArithmeticReadsNonContiguousOperands) {
 
 TEST(TensorViewOps, MatMulAcceptsATransposedView) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> product = math::MatMul(a, a.transpose());
+    const Tensor<float> product = math::MatMul(a, a.Transpose());
 
-    EXPECT_EQ(product.shape(), (std::vector<size_t>{2, 2}));
+    EXPECT_EQ(product.Shape(), (std::vector<size_t>{2, 2}));
     EXPECT_FLOAT_EQ(product(0, 0), 14.0f);
     EXPECT_FLOAT_EQ(product(0, 1), 32.0f);
     EXPECT_FLOAT_EQ(product(1, 0), 32.0f);
@@ -906,30 +906,30 @@ TEST(TensorViewOps, MatMulAcceptsATransposedView) {
 
 TEST(TensorViewOps, ScalarOperatorOnAViewDoesNotTouchTheSource) {
     Tensor<float> a({2, 3}, 3.0f);
-    const Tensor<float> r = a.row(0);
+    const Tensor<float> r = a.Row(0);
 
     const Tensor<float> doubled = r * 2.0f;
 
     EXPECT_FLOAT_EQ(doubled(0), 6.0f);
     EXPECT_FLOAT_EQ(a(0, 0), 3.0f);
-    EXPECT_FALSE(doubled.shares_storage(a));
+    EXPECT_FALSE(doubled.SharesStorage(a));
 }
 
 TEST(TensorViewOps, ContiguityReportedCorrectly) {
     Tensor<float> a({2, 3}, 1.0f);
-    EXPECT_TRUE(a.is_contiguous());
-    EXPECT_TRUE(a.row(0).is_contiguous());
-    EXPECT_TRUE(a.slice(0, 0, 1).is_contiguous());
-    EXPECT_FALSE(a.transpose().is_contiguous());
+    EXPECT_TRUE(a.IsContiguous());
+    EXPECT_TRUE(a.Row(0).IsContiguous());
+    EXPECT_TRUE(a.Slice(0, 0, 1).IsContiguous());
+    EXPECT_FALSE(a.Transpose().IsContiguous());
 }
 
 TEST(TensorViewOps, ViewOfAViewComposes) {
     Tensor<float> a({4, 4});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> block = a.slice(0, 1, 2).slice(1, 1, 2);
+    const Tensor<float> block = a.Slice(0, 1, 2).Slice(1, 1, 2);
 
-    EXPECT_EQ(block.shape(), (std::vector<size_t>{2, 2}));
+    EXPECT_EQ(block.Shape(), (std::vector<size_t>{2, 2}));
     EXPECT_FLOAT_EQ(block(0, 0), a(1, 1));
     EXPECT_FLOAT_EQ(block(1, 1), a(2, 2));
 }
@@ -938,28 +938,28 @@ TEST(TensorViewOps, ViewOfAViewComposes) {
 
 TEST(TensorContiguous, AlreadyContiguousSharesStorage) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> c = a.contiguous();
+    const Tensor<float> c = a.Contiguous();
 
-    EXPECT_TRUE(c.shares_storage(a));
-    EXPECT_EQ(c.data(), a.data());
-    EXPECT_TRUE(c.is_contiguous());
+    EXPECT_TRUE(c.SharesStorage(a));
+    EXPECT_EQ(c.Data(), a.Data());
+    EXPECT_TRUE(c.IsContiguous());
 }
 
 TEST(TensorContiguous, NonContiguousIsCompactedIntoNewStorage) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose();
-    ASSERT_FALSE(t.is_contiguous());
+    const Tensor<float> t = a.Transpose();
+    ASSERT_FALSE(t.IsContiguous());
 
-    const Tensor<float> c = t.contiguous();
+    const Tensor<float> c = t.Contiguous();
 
-    EXPECT_TRUE(c.is_contiguous());
-    EXPECT_FALSE(c.shares_storage(a));
-    EXPECT_EQ(c.shape(), t.shape());
-    EXPECT_EQ(c.strides(), (std::vector<size_t>{2, 1}));
+    EXPECT_TRUE(c.IsContiguous());
+    EXPECT_FALSE(c.SharesStorage(a));
+    EXPECT_EQ(c.Shape(), t.Shape());
+    EXPECT_EQ(c.Strides(), (std::vector<size_t>{2, 1}));
     for (size_t i = 0; i < 3; ++i) {
         for (size_t j = 0; j < 2; ++j) {
             EXPECT_FLOAT_EQ(c(i, j), t(i, j));
@@ -969,22 +969,22 @@ TEST(TensorContiguous, NonContiguousIsCompactedIntoNewStorage) {
 
 TEST(TensorContiguous, UnblocksViewOnATransposedTensor) {
     Tensor<float> a({2, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> t = a.transpose();
-    EXPECT_THROW(t.view(6), std::invalid_argument);
+    const Tensor<float> t = a.Transpose();
+    EXPECT_THROW(t.View(6), std::invalid_argument);
 
-    const Tensor<float> flat = t.contiguous().view(6);
-    EXPECT_EQ(flat.shape(), (std::vector<size_t>{6}));
+    const Tensor<float> flat = t.Contiguous().View(6);
+    EXPECT_EQ(flat.Shape(), (std::vector<size_t>{6}));
     EXPECT_FLOAT_EQ(flat(0), a(0, 0));
     EXPECT_FLOAT_EQ(flat(1), a(1, 0));
 }
 
 TEST(TensorContiguous, CompactedCopyIsDecoupledFromTheSource) {
     Tensor<float> a({2, 3}, 1.0f);
-    Tensor<float> c = a.transpose().contiguous();
+    Tensor<float> c = a.Transpose().Contiguous();
 
-    c.fill(9.0f);
+    c.Fill(9.0f);
 
     EXPECT_FLOAT_EQ(a(0, 0), 1.0f);
     EXPECT_FLOAT_EQ(c(0, 0), 9.0f);
@@ -992,19 +992,214 @@ TEST(TensorContiguous, CompactedCopyIsDecoupledFromTheSource) {
 
 TEST(TensorContiguous, SliceOfRowsStaysContiguous) {
     Tensor<float> a({4, 3});
-    iota_fill(a);
+    IotaFill(a);
 
-    const Tensor<float> s = a.slice(0, 1, 2);
-    ASSERT_TRUE(s.is_contiguous());
+    const Tensor<float> s = a.Slice(0, 1, 2);
+    ASSERT_TRUE(s.IsContiguous());
 
-    const Tensor<float> c = s.contiguous();
-    EXPECT_TRUE(c.shares_storage(a)) << "no copy needed when already contiguous";
+    const Tensor<float> c = s.Contiguous();
+    EXPECT_TRUE(c.SharesStorage(a)) << "no copy needed when already contiguous";
 }
 
 TEST(TensorContiguous, EmptyTensorIsHandled) {
     Tensor<float> t;
-    const Tensor<float> c = t.contiguous();
-    EXPECT_EQ(c.size(), 0u);
+    const Tensor<float> c = t.Contiguous();
+    EXPECT_EQ(c.Size(), 0u);
+}
+
+// --- Reshape ----------------------------------------------------------------
+
+TEST(TensorReshape, ContiguousSourceSharesStorage) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> r = a.Reshape(3, 2);
+
+    EXPECT_TRUE(r.SharesStorage(a)) << "no copy needed for a contiguous source";
+    EXPECT_EQ(r.Shape(), (std::vector<size_t>{3, 2}));
+    EXPECT_EQ(r.Size(), a.Size());
+    EXPECT_TRUE(r.IsContiguous());
+}
+
+TEST(TensorReshape, PreservesRowMajorOrder) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> flat = a.Reshape(6);
+
+    for (size_t i = 0; i < 6; ++i) {
+        EXPECT_FLOAT_EQ(flat(i), static_cast<float>(i + 1)) << "at " << i;
+    }
+}
+
+TEST(TensorReshape, WritesPropagateWhenSharing) {
+    Tensor<float> a({2, 3}, 0.0f);
+    Tensor<float> r = a.Reshape(6);
+
+    r(5) = 42.0f;
+
+    EXPECT_FLOAT_EQ(a(1, 2), 42.0f);
+}
+
+TEST(TensorReshape, ChangesRank) {
+    Tensor<float> a({2, 3, 4});
+    IotaFill(a);
+
+    const Tensor<float> flat = a.Reshape(24);
+    const Tensor<float> matrix = a.Reshape(6, 4);
+
+    EXPECT_EQ(flat.Rank(), 1u);
+    EXPECT_EQ(matrix.Shape(), (std::vector<size_t>{6, 4}));
+    EXPECT_FLOAT_EQ(flat(23), matrix(5, 3));
+}
+
+TEST(TensorReshape, VectorAndVariadicFormsAgree) {
+    Tensor<float> a({2, 6});
+    IotaFill(a);
+
+    const Tensor<float> v = a.Reshape(std::vector<size_t>{3, 4});
+    const Tensor<float> d = a.Reshape(3, 4);
+
+    EXPECT_EQ(v.Shape(), d.Shape());
+    EXPECT_FLOAT_EQ(v(2, 3), d(2, 3));
+}
+
+TEST(TensorReshape, IdentityShapeIsAllowed) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> r = a.Reshape(2, 3);
+
+    EXPECT_EQ(r.Shape(), a.Shape());
+    EXPECT_TRUE(r.SharesStorage(a));
+    EXPECT_FLOAT_EQ(r(1, 2), a(1, 2));
+}
+
+TEST(TensorReshape, RejectsElementCountChange) {
+    Tensor<float> a({2, 3}, 1.0f);
+
+    EXPECT_THROW(a.Reshape(2, 2), std::invalid_argument);
+    EXPECT_THROW(a.Reshape(7), std::invalid_argument);
+    EXPECT_THROW(a.Reshape(2, 3, 2), std::invalid_argument);
+}
+
+TEST(TensorReshape, RejectsZeroDimension) {
+    Tensor<float> a({2, 3}, 1.0f);
+    EXPECT_THROW(a.Reshape(0, 6), std::invalid_argument);
+}
+
+TEST(TensorReshape, RejectsEmptyTensor) {
+    Tensor<float> empty;
+    EXPECT_THROW(empty.Reshape(1), std::invalid_argument);
+}
+
+// --- Reshape over non-contiguous sources ------------------------------------
+
+TEST(TensorReshape, NonContiguousSourceIsCopied) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> t = a.Transpose();
+    ASSERT_FALSE(t.IsContiguous());
+
+    const Tensor<float> r = t.Reshape(6);
+
+    EXPECT_FALSE(r.SharesStorage(a)) << "a strided source must be compacted";
+    EXPECT_TRUE(r.IsContiguous());
+    EXPECT_EQ(r.Size(), 6u);
+}
+
+TEST(TensorReshape, NonContiguousCopyUsesLogicalOrder) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);   // rows: (1 2 3), (4 5 6)
+
+    const Tensor<float> t = a.Transpose();   // 3x2: (1 4), (2 5), (3 6)
+    const Tensor<float> r = t.Reshape(6);
+
+    const float expected[] = {1.0f, 4.0f, 2.0f, 5.0f, 3.0f, 6.0f};
+    for (size_t i = 0; i < 6; ++i) {
+        EXPECT_FLOAT_EQ(r(i), expected[i]) << "at " << i;
+    }
+}
+
+TEST(TensorReshape, OffsetIsResetWhenCompacting) {
+    // Regression: the clone path must drop the source offset, or every read
+    // lands past the end of the freshly allocated buffer.
+    Tensor<float> a({4, 4});
+    for (size_t i = 0; i < 4; ++i) {
+        for (size_t j = 0; j < 4; ++j) {
+            a(i, j) = static_cast<float>(i * 4 + j);
+        }
+    }
+
+    const Tensor<float> block = a.Slice(0, 1, 2).Slice(1, 1, 2);
+    ASSERT_FALSE(block.IsContiguous());
+    ASSERT_GT(block.Offset(), 0u);
+
+    const Tensor<float> r = block.Reshape(4);
+
+    EXPECT_EQ(r.Offset(), 0u);
+    EXPECT_FLOAT_EQ(r(0), 5.0f);
+    EXPECT_FLOAT_EQ(r(1), 6.0f);
+    EXPECT_FLOAT_EQ(r(2), 9.0f);
+    EXPECT_FLOAT_EQ(r(3), 10.0f);
+}
+
+TEST(TensorReshape, ContiguousViewWithOffsetKeepsItsOffset) {
+    Tensor<float> a({3, 4});
+    IotaFill(a);
+
+    const Tensor<float> r = a.Row(1);
+    ASSERT_TRUE(r.IsContiguous());
+    ASSERT_EQ(r.Offset(), 4u);
+
+    const Tensor<float> reshaped = r.Reshape(2, 2);
+
+    EXPECT_TRUE(reshaped.SharesStorage(a));
+    EXPECT_EQ(reshaped.Offset(), 4u);
+    EXPECT_FLOAT_EQ(reshaped(0, 0), a(1, 0));
+    EXPECT_FLOAT_EQ(reshaped(1, 1), a(1, 3));
+}
+
+TEST(TensorReshape, CopiedResultIsDecoupledFromTheSource) {
+    Tensor<float> a({2, 3}, 1.0f);
+    Tensor<float> r = a.Transpose().Reshape(6);
+
+    r.Fill(9.0f);
+
+    EXPECT_FLOAT_EQ(a(0, 0), 1.0f) << "compacted copy must not alias the source";
+}
+
+TEST(TensorReshape, SucceedsWhereViewWouldThrow) {
+    Tensor<float> a({2, 3}, 1.0f);
+    const Tensor<float> t = a.Transpose();
+
+    EXPECT_THROW(t.View(6), std::invalid_argument);
+    EXPECT_NO_THROW(t.Reshape(6)) << "Reshape falls back to a copy";
+}
+
+TEST(TensorReshape, ResultIsUsableInArithmetic) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> r = a.Transpose().Reshape(3, 2);
+    const Tensor<float> sum = r + r;
+
+    EXPECT_EQ(sum.Shape(), (std::vector<size_t>{3, 2}));
+    EXPECT_FLOAT_EQ(sum(0, 0), r(0, 0) * 2.0f);
+    EXPECT_FLOAT_EQ(sum(2, 1), r(2, 1) * 2.0f);
+}
+
+TEST(TensorReshape, ChainsWithOtherViews) {
+    Tensor<float> a({4, 4});
+    IotaFill(a);
+
+    const Tensor<float> r = a.Slice(0, 1, 2).Reshape(8);
+
+    EXPECT_EQ(r.Size(), 8u);
+    EXPECT_TRUE(r.SharesStorage(a)) << "a row slice is still contiguous";
+    EXPECT_FLOAT_EQ(r(0), a(1, 0));
+    EXPECT_FLOAT_EQ(r(7), a(2, 3));
 }
 
 // --- element type -----------------------------------------------------------

@@ -19,8 +19,8 @@ constexpr float kTol = 1e-4f;
 // Mean and (biased) variance over one contiguous block of `count` elements
 // starting at flat index `start`.
 template <typename T>
-void block_stats(const Tensor<T>& t, size_t start, size_t count, T& mean, T& variance) {
-    const T* p = t.data() + start;
+void BlockStats(const Tensor<T>& t, size_t start, size_t count, T& mean, T& variance) {
+    const T* p = t.Data() + start;
     mean = T(0);
     for (size_t i = 0; i < count; ++i) mean += p[i];
     mean /= static_cast<T>(count);
@@ -34,9 +34,9 @@ void block_stats(const Tensor<T>& t, size_t start, size_t count, T& mean, T& var
 }
 
 template <typename T>
-void iota_fill_flat(Tensor<T>& t, T start = T(1)) {
-    T* p = t.data();
-    for (size_t i = 0; i < t.size(); ++i) p[i] = start + static_cast<T>(i);
+void IotaFillFlat(Tensor<T>& t, T start = T(1)) {
+    T* p = t.Data();
+    for (size_t i = 0; i < t.Size(); ++i) p[i] = start + static_cast<T>(i);
 }
 
 }  // namespace
@@ -46,23 +46,23 @@ void iota_fill_flat(Tensor<T>& t, T start = T(1)) {
 TEST(LayerNormConstruction, ScalarFeatureSizeNormalisesTheLastAxis) {
     LayerNorm<float> ln(4);
 
-    EXPECT_EQ(ln.normalized_shape(), (std::vector<size_t>{4}));
-    EXPECT_EQ(ln.normalized_size(), 4u);
+    EXPECT_EQ(ln.NormalizedShape(), (std::vector<size_t>{4}));
+    EXPECT_EQ(ln.NormalizedSize(), 4u);
 }
 
 TEST(LayerNormConstruction, MultiAxisShapeIsStoredAsGiven) {
     LayerNorm<float> ln(std::vector<size_t>{3, 4, 5});
 
-    EXPECT_EQ(ln.normalized_shape(), (std::vector<size_t>{3, 4, 5}));
-    EXPECT_EQ(ln.normalized_size(), 60u);
+    EXPECT_EQ(ln.NormalizedShape(), (std::vector<size_t>{3, 4, 5}));
+    EXPECT_EQ(ln.NormalizedSize(), 60u);
 }
 
 TEST(LayerNormConstruction, ParametersMatchNormalizedShape) {
     LayerNorm<float> ln(std::vector<size_t>{2, 3});
 
-    EXPECT_EQ(ln.gamma->shape(), (std::vector<size_t>{2, 3}));
-    EXPECT_EQ(ln.beta->shape(), (std::vector<size_t>{2, 3}));
-    EXPECT_EQ(ln.parameters().size(), 2u);
+    EXPECT_EQ(ln.gamma->Shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(ln.beta->Shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(ln.Parameters().size(), 2u);
 }
 
 TEST(LayerNormConstruction, GammaStartsAtOneAndBetaAtZero) {
@@ -86,7 +86,7 @@ TEST(LayerNormConstruction, ExplicitParametersAreAdopted) {
     Tensor<float> b({3}, 0.5f);
     LayerNorm<float> ln(g, b);
 
-    EXPECT_EQ(ln.normalized_shape(), (std::vector<size_t>{3}));
+    EXPECT_EQ(ln.NormalizedShape(), (std::vector<size_t>{3}));
     EXPECT_FLOAT_EQ((*ln.gamma)(0), 2.0f);
     EXPECT_FLOAT_EQ((*ln.beta)(0), 0.5f);
 }
@@ -103,25 +103,25 @@ TEST(LayerNormConstruction, RejectsMismatchedGammaAndBeta) {
 TEST(LayerNormForward, PreservesShape) {
     LayerNorm<float> ln(4);
     Tensor<float> in({2, 4});
-    iota_fill_flat(in);
+    IotaFillFlat(in);
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
-    EXPECT_EQ(out.shape(), (std::vector<size_t>{2, 4}));
+    EXPECT_EQ(out.Shape(), (std::vector<size_t>{2, 4}));
 }
 
 TEST(LayerNormForward, EachRowHasZeroMeanAndUnitVariance) {
     LayerNorm<float> ln(4);
     Tensor<float> in({3, 4});
-    iota_fill_flat(in, 1.0f);
+    IotaFillFlat(in, 1.0f);
     in(1, 2) = 100.0f;   // make the rows genuinely different
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
     for (size_t row = 0; row < 3; ++row) {
         float mean = 0.0f;
         float variance = 0.0f;
-        block_stats(out, row * 4, 4, mean, variance);
+        BlockStats(out, row * 4, 4, mean, variance);
         EXPECT_NEAR(mean, 0.0f, kTol) << "row " << row;
         EXPECT_NEAR(variance, 1.0f, 1e-3f) << "row " << row;
     }
@@ -131,9 +131,9 @@ TEST(LayerNormForward, KnownValuesForASingleRow) {
     // {1, 2, 3, 4}: mean 2.5, biased variance 1.25, stddev ~1.118034
     LayerNorm<float> ln(4);
     Tensor<float> in({1, 4});
-    iota_fill_flat(in, 1.0f);
+    IotaFillFlat(in, 1.0f);
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
     EXPECT_NEAR(out(0, 0), -1.341641f, kTol);
     EXPECT_NEAR(out(0, 1), -0.447214f, kTol);
@@ -147,7 +147,7 @@ TEST(LayerNormForward, RowsAreNormalisedIndependently) {
     in(0, 0) = 0.0f;   in(0, 1) = 1.0f;
     in(1, 0) = 100.0f; in(1, 1) = 200.0f;
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
     EXPECT_NEAR(out(0, 0), out(1, 0), kTol) << "scale must not leak between rows";
     EXPECT_NEAR(out(0, 1), out(1, 1), kTol);
@@ -157,7 +157,7 @@ TEST(LayerNormForward, ConstantRowIsFiniteAndZero) {
     LayerNorm<float> ln(3);
     Tensor<float> in({1, 3}, 5.0f);
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
     for (size_t j = 0; j < 3; ++j) {
         EXPECT_FALSE(std::isnan(out(0, j))) << "epsilon must prevent 0/0";
@@ -167,13 +167,13 @@ TEST(LayerNormForward, ConstantRowIsFiniteAndZero) {
 
 TEST(LayerNormForward, GammaScalesAndBetaShifts) {
     LayerNorm<float> ln(4);
-    ln.gamma->fill(2.0f);
-    ln.beta->fill(10.0f);
+    ln.gamma->Fill(2.0f);
+    ln.beta->Fill(10.0f);
 
     Tensor<float> in({1, 4});
-    iota_fill_flat(in, 1.0f);
+    IotaFillFlat(in, 1.0f);
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
     EXPECT_NEAR(out(0, 0), -1.341641f * 2.0f + 10.0f, kTol);
     EXPECT_NEAR(out(0, 3), 1.341641f * 2.0f + 10.0f, kTol);
@@ -186,9 +186,9 @@ TEST(LayerNormForward, GammaIsAppliedPerFeature) {
     (*ln.gamma)(2) = 0.0f;
 
     Tensor<float> in({2, 3});
-    iota_fill_flat(in, 1.0f);
+    IotaFillFlat(in, 1.0f);
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
     for (size_t row = 0; row < 2; ++row) {
         EXPECT_NEAR(out(row, 0), 0.0f, kTol);
@@ -200,15 +200,15 @@ TEST(LayerNormForward, IsInvariantToShiftAndScaleOfTheInput) {
     LayerNorm<float> ln(4);
 
     Tensor<float> base({1, 4});
-    iota_fill_flat(base, 1.0f);
+    IotaFillFlat(base, 1.0f);
 
     Tensor<float> transformed({1, 4});
     for (size_t j = 0; j < 4; ++j) {
         transformed(0, j) = base(0, j) * 7.0f + 100.0f;
     }
 
-    const Tensor<float> a = ln.forward(base);
-    const Tensor<float> b = ln.forward(transformed);
+    const Tensor<float> a = ln.Forward(base);
+    const Tensor<float> b = ln.Forward(transformed);
 
     for (size_t j = 0; j < 4; ++j) {
         EXPECT_NEAR(a(0, j), b(0, j), 1e-3f);
@@ -220,16 +220,16 @@ TEST(LayerNormForward, IsInvariantToShiftAndScaleOfTheInput) {
 TEST(LayerNormMultiAxis, NormalisesTheLastThreeDimensionsJointly) {
     LayerNorm<float> ln(std::vector<size_t>{2, 3, 4});
     Tensor<float> in({5, 2, 3, 4});
-    iota_fill_flat(in, 1.0f);
+    IotaFillFlat(in, 1.0f);
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
-    ASSERT_EQ(out.shape(), (std::vector<size_t>{5, 2, 3, 4}));
+    ASSERT_EQ(out.Shape(), (std::vector<size_t>{5, 2, 3, 4}));
     const size_t inner = 24;
     for (size_t batch = 0; batch < 5; ++batch) {
         float mean = 0.0f;
         float variance = 0.0f;
-        block_stats(out, batch * inner, inner, mean, variance);
+        BlockStats(out, batch * inner, inner, mean, variance);
         EXPECT_NEAR(mean, 0.0f, kTol) << "batch " << batch;
         EXPECT_NEAR(variance, 1.0f, 1e-3f) << "batch " << batch;
     }
@@ -237,13 +237,13 @@ TEST(LayerNormMultiAxis, NormalisesTheLastThreeDimensionsJointly) {
 
 TEST(LayerNormMultiAxis, DiffersFromNormalisingOnlyTheLastAxis) {
     Tensor<float> in({1, 2, 3});
-    iota_fill_flat(in, 1.0f);
+    IotaFillFlat(in, 1.0f);
 
     LayerNorm<float> last_only(3);
     LayerNorm<float> last_two(std::vector<size_t>{2, 3});
 
-    const Tensor<float> a = last_only.forward(in);
-    const Tensor<float> b = last_two.forward(in);
+    const Tensor<float> a = last_only.Forward(in);
+    const Tensor<float> b = last_two.Forward(in);
 
     EXPECT_GT(std::abs(a(0, 0, 0) - b(0, 0, 0)), 1e-3f)
         << "normalising over 6 elements must differ from two groups of 3";
@@ -252,26 +252,26 @@ TEST(LayerNormMultiAxis, DiffersFromNormalisingOnlyTheLastAxis) {
 TEST(LayerNormMultiAxis, WholeTensorWhenShapeMatchesTheInput) {
     LayerNorm<float> ln(std::vector<size_t>{2, 3});
     Tensor<float> in({2, 3});
-    iota_fill_flat(in, 1.0f);
+    IotaFillFlat(in, 1.0f);
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
     float mean = 0.0f;
     float variance = 0.0f;
-    block_stats(out, 0, 6, mean, variance);
+    BlockStats(out, 0, 6, mean, variance);
     EXPECT_NEAR(mean, 0.0f, kTol);
     EXPECT_NEAR(variance, 1.0f, 1e-3f);
 }
 
 TEST(LayerNormMultiAxis, GammaAppliesAcrossAllNormalisedAxes) {
     LayerNorm<float> ln(std::vector<size_t>{2, 2});
-    ln.gamma->fill(3.0f);
-    ln.beta->fill(1.0f);
+    ln.gamma->Fill(3.0f);
+    ln.beta->Fill(1.0f);
 
     Tensor<float> in({2, 2, 2});
-    iota_fill_flat(in, 1.0f);
+    IotaFillFlat(in, 1.0f);
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
     // Every 2x2 block is {1,2,3,4}-like: normalised to +-1.341641, +-0.447214.
     EXPECT_NEAR(out(0, 0, 0), -1.341641f * 3.0f + 1.0f, kTol);
@@ -284,7 +284,7 @@ TEST(LayerNormForward, RejectsRankSmallerThanNormalizedShape) {
     LayerNorm<float> ln(std::vector<size_t>{2, 3});
     Tensor<float> in({3}, 1.0f);
 
-    EXPECT_THROW(ln.forward(in), std::invalid_argument);
+    EXPECT_THROW(ln.Forward(in), std::invalid_argument);
 }
 
 TEST(LayerNormForward, RejectsMismatchedTrailingDimensions) {
@@ -293,8 +293,8 @@ TEST(LayerNormForward, RejectsMismatchedTrailingDimensions) {
     Tensor<float> wrong_last({4, 2, 4}, 1.0f);
     Tensor<float> wrong_middle({4, 5, 3}, 1.0f);
 
-    EXPECT_THROW(ln.forward(wrong_last), std::invalid_argument);
-    EXPECT_THROW(ln.forward(wrong_middle), std::invalid_argument);
+    EXPECT_THROW(ln.Forward(wrong_last), std::invalid_argument);
+    EXPECT_THROW(ln.Forward(wrong_middle), std::invalid_argument);
 }
 
 // --- aliasing and reuse -----------------------------------------------------
@@ -302,12 +302,12 @@ TEST(LayerNormForward, RejectsMismatchedTrailingDimensions) {
 TEST(LayerNormForward, DoesNotMutateOrAliasTheInput) {
     LayerNorm<float> ln(3);
     Tensor<float> in({2, 3});
-    iota_fill_flat(in, 1.0f);
-    const Tensor<float> before = in.clone();
+    IotaFillFlat(in, 1.0f);
+    const Tensor<float> before = in.Clone();
 
-    const Tensor<float> out = ln.forward(in);
+    const Tensor<float> out = ln.Forward(in);
 
-    EXPECT_FALSE(out.shares_storage(in));
+    EXPECT_FALSE(out.SharesStorage(in));
     for (size_t i = 0; i < 2; ++i) {
         for (size_t j = 0; j < 3; ++j) {
             EXPECT_FLOAT_EQ(in(i, j), before(i, j));
@@ -318,19 +318,19 @@ TEST(LayerNormForward, DoesNotMutateOrAliasTheInput) {
 TEST(LayerNormForward, HandlesANonContiguousInput) {
     LayerNorm<float> ln(2);
     Tensor<float> source({2, 3});
-    iota_fill_flat(source, 1.0f);
+    IotaFillFlat(source, 1.0f);
 
-    const Tensor<float> view = source.transpose();
-    ASSERT_FALSE(view.is_contiguous());
-    ASSERT_EQ(view.shape(), (std::vector<size_t>{3, 2}));
+    const Tensor<float> view = source.Transpose();
+    ASSERT_FALSE(view.IsContiguous());
+    ASSERT_EQ(view.Shape(), (std::vector<size_t>{3, 2}));
 
-    const Tensor<float> out = ln.forward(view);
+    const Tensor<float> out = ln.Forward(view);
 
-    ASSERT_EQ(out.shape(), (std::vector<size_t>{3, 2}));
+    ASSERT_EQ(out.Shape(), (std::vector<size_t>{3, 2}));
     for (size_t row = 0; row < 3; ++row) {
         float mean = 0.0f;
         float variance = 0.0f;
-        block_stats(out, row * 2, 2, mean, variance);
+        BlockStats(out, row * 2, 2, mean, variance);
         EXPECT_NEAR(mean, 0.0f, kTol) << "row " << row;
     }
 }
@@ -338,10 +338,10 @@ TEST(LayerNormForward, HandlesANonContiguousInput) {
 TEST(LayerNormForward, IsRepeatable) {
     LayerNorm<float> ln(4);
     Tensor<float> in({2, 4});
-    iota_fill_flat(in, 1.0f);
+    IotaFillFlat(in, 1.0f);
 
-    const Tensor<float> first = ln.forward(in);
-    const Tensor<float> second = ln.forward(in);
+    const Tensor<float> first = ln.Forward(in);
+    const Tensor<float> second = ln.Forward(in);
 
     for (size_t i = 0; i < 2; ++i) {
         for (size_t j = 0; j < 4; ++j) {
@@ -355,12 +355,12 @@ TEST(LayerNormModule, DispatchesThroughABasePointer) {
         std::make_shared<LayerNorm<float>>(std::vector<size_t>{3});
 
     Tensor<float> in({2, 3});
-    iota_fill_flat(in, 1.0f);
+    IotaFillFlat(in, 1.0f);
 
-    const Tensor<float> out = m->forward(in);
+    const Tensor<float> out = m->Forward(in);
 
-    EXPECT_EQ(out.shape(), (std::vector<size_t>{2, 3}));
-    EXPECT_EQ(m->parameters().size(), 2u);
+    EXPECT_EQ(out.Shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(m->Parameters().size(), 2u);
 }
 
 // --- element type -----------------------------------------------------------
@@ -368,13 +368,13 @@ TEST(LayerNormModule, DispatchesThroughABasePointer) {
 TEST(LayerNormElementType, WorksWithDouble) {
     LayerNorm<double> ln(4);
     Tensor<double> in({1, 4});
-    iota_fill_flat(in, 1.0);
+    IotaFillFlat(in, 1.0);
 
-    const Tensor<double> out = ln.forward(in);
+    const Tensor<double> out = ln.Forward(in);
 
     // {1,2,3,4}: mean 2.5, biased variance 1.25. Epsilon shifts the divisor,
     // so derive the expectation rather than hard-coding the eps-free constant.
-    const double inv_stddev = 1.0 / std::sqrt(1.25 + ln.epsilon());
+    const double inv_stddev = 1.0 / std::sqrt(1.25 + ln.Epsilon());
     EXPECT_NEAR(out(0, 0), -1.5 * inv_stddev, 1e-12);
     EXPECT_NEAR(out(0, 3), 1.5 * inv_stddev, 1e-12);
 }

@@ -12,16 +12,16 @@ namespace nn{
     public:
         Linear(size_t input_size, size_t output_size, bool use_bias = true) :
         weight(std::make_shared<Tensor<T>>(std::vector<size_t>{output_size, input_size})) {
-            this->register_parameter("weight", weight);
+            this->RegisterParameter("weight", weight);
 
             if (use_bias) {
                 bias = std::make_shared<Tensor<T>>(std::vector<size_t>{output_size});
-                this->register_parameter("bias", bias);
+                this->RegisterParameter("bias", bias);
             }
         }
 
-        Tensor<T> forward(const Tensor<T>& input) override {
-            Tensor<T> output = MatMul(input, weight->transpose());
+        Tensor<T> Forward(const Tensor<T>& input) override {
+            Tensor<T> output = MatMul(input, weight->Transpose());
             if (bias) {
                 output += *bias;
             }
