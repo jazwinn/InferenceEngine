@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <Math/tensor.h>
+#include <Math/Tensor.h>
 
 #include <stdexcept>
 #include <type_traits>
@@ -1200,6 +1200,340 @@ TEST(TensorReshape, ChainsWithOtherViews) {
     EXPECT_TRUE(r.SharesStorage(a)) << "a row slice is still contiguous";
     EXPECT_FLOAT_EQ(r(0), a(1, 0));
     EXPECT_FLOAT_EQ(r(7), a(2, 3));
+}
+
+// --- Sqrt -------------------------------------------------------------------
+
+TEST(TensorSqrt, AppliesElementwise) {
+    Tensor<float> a({2, 2});
+    a(0, 0) = 1.0f; a(0, 1) = 4.0f;
+    a(1, 0) = 9.0f; a(1, 1) = 16.0f;
+
+    const Tensor<float> r = a.Sqrt();
+
+    EXPECT_FLOAT_EQ(r(0, 0), 1.0f);
+    EXPECT_FLOAT_EQ(r(0, 1), 2.0f);
+    EXPECT_FLOAT_EQ(r(1, 0), 3.0f);
+    EXPECT_FLOAT_EQ(r(1, 1), 4.0f);
+}
+
+TEST(TensorSqrt, DoesNotMutateOrAliasTheSource) {
+    Tensor<float> a({1, 2}, 9.0f);
+
+    const Tensor<float> r = a.Sqrt();
+
+    EXPECT_FLOAT_EQ(a(0, 0), 9.0f);
+    EXPECT_FALSE(r.SharesStorage(a));
+}
+
+TEST(TensorSqrt, HandlesANonContiguousSource) {
+    Tensor<float> a({2, 2});
+    a(0, 0) = 1.0f; a(0, 1) = 4.0f;
+    a(1, 0) = 9.0f; a(1, 1) = 16.0f;
+
+    const Tensor<float> t = a.Transpose();
+    ASSERT_FALSE(t.IsContiguous());
+
+    const Tensor<float> r = t.Sqrt();
+
+    EXPECT_EQ(r.Shape(), (std::vector<size_t>{2, 2}));
+    EXPECT_FLOAT_EQ(r(0, 1), 3.0f) << "t(0,1) is a(1,0) == 9";
+    EXPECT_FLOAT_EQ(r(1, 0), 2.0f) << "t(1,0) is a(0,1) == 4";
+}
+
+TEST(TensorSqrt, FreeFormForwardsToTheMember) {
+    Tensor<float> a({1, 2}, 25.0f);
+    EXPECT_FLOAT_EQ(math::Sqrt(a)(0, 0), a.Sqrt()(0, 0));
+}
+
+// --- Mean over the whole tensor ---------------------------------------------
+
+TEST(TensorMeanAll, AveragesEveryElement) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);   // 1..6
+
+    const Tensor<float> m = a.Mean();
+
+    EXPECT_EQ(m.Shape(), (std::vector<size_t>{1}));
+    EXPECT_FLOAT_EQ(m(0), 3.5f);
+}
+
+TEST(TensorMeanAll, ThrowsOnAnEmptyTensor) {
+    Tensor<float> empty;
+    EXPECT_THROW(empty.Mean(), std::invalid_argument);
+}
+
+TEST(TensorMeanAll, FreeFormForwardsToTheMember) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+    EXPECT_FLOAT_EQ(math::Mean(a)(0), a.Mean()(0));
+}
+
+// --- Mean over one axis -----------------------------------------------------
+
+TEST(TensorMeanAxis, ReducingAxisZeroAveragesDownColumns) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);   // rows (1 2 3), (4 5 6)
+
+    const Tensor<float> m = a.Mean(0);
+
+    EXPECT_EQ(m.Shape(), (std::vector<size_t>{3}));
+    EXPECT_FLOAT_EQ(m(0), 2.5f);
+    EXPECT_FLOAT_EQ(m(1), 3.5f);
+    EXPECT_FLOAT_EQ(m(2), 4.5f);
+}
+
+TEST(TensorMeanAxis, ReducingAxisOneAveragesAcrossRows) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> m = a.Mean(1);
+
+    EXPECT_EQ(m.Shape(), (std::vector<size_t>{2}));
+    EXPECT_FLOAT_EQ(m(0), 2.0f);
+    EXPECT_FLOAT_EQ(m(1), 5.0f);
+}
+
+TEST(TensorMeanAxis, KeepdimKeepsTheRank) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> m = a.Mean(1, true);
+
+    EXPECT_EQ(m.Shape(), (std::vector<size_t>{2, 1}));
+    EXPECT_EQ(m.Rank(), 2u);
+    EXPECT_FLOAT_EQ(m(0, 0), 2.0f);
+    EXPECT_FLOAT_EQ(m(1, 0), 5.0f);
+}
+
+TEST(TensorMeanAxis, KeepdimResultBroadcastsAgainstTheSource) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> centred = a - a.Mean(1, true);
+
+    ASSERT_EQ(centred.Shape(), (std::vector<size_t>{2, 3}));
+    for (size_t i = 0; i < 2; ++i) {
+        float sum = 0.0f;
+        for (size_t j = 0; j < 3; ++j) sum += centred(i, j);
+        EXPECT_NEAR(sum, 0.0f, 1e-5f) << "row " << i << " must be centred";
+    }
+}
+
+TEST(TensorMeanAxis, RankThreeReducesTheMiddleAxis) {
+    Tensor<float> a({2, 3, 4});
+    IotaFill(a);
+
+    const Tensor<float> m = a.Mean(1);
+
+    ASSERT_EQ(m.Shape(), (std::vector<size_t>{2, 4}));
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t k = 0; k < 4; ++k) {
+            const float expected = (a(i, 0, k) + a(i, 1, k) + a(i, 2, k)) / 3.0f;
+            EXPECT_FLOAT_EQ(m(i, k), expected) << "at (" << i << ", " << k << ")";
+        }
+    }
+}
+
+TEST(TensorMeanAxis, RankThreeReducesTheLastAxis) {
+    Tensor<float> a({2, 3, 4});
+    IotaFill(a);
+
+    const Tensor<float> m = a.Mean(2, true);
+
+    ASSERT_EQ(m.Shape(), (std::vector<size_t>{2, 3, 1}));
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            float sum = 0.0f;
+            for (size_t k = 0; k < 4; ++k) sum += a(i, j, k);
+            EXPECT_FLOAT_EQ(m(i, j, 0), sum / 4.0f);
+        }
+    }
+}
+
+TEST(TensorMeanAxis, RankOneCollapsesToAScalar) {
+    Tensor<float> a({4});
+    for (size_t i = 0; i < 4; ++i) a(i) = static_cast<float>(i + 1);
+
+    const Tensor<float> m = a.Mean(0);
+
+    EXPECT_EQ(m.Rank(), 0u);
+    EXPECT_EQ(m.Size(), 1u);
+    EXPECT_FLOAT_EQ(m(), 2.5f);
+}
+
+TEST(TensorMeanAxis, ReducingALengthOneAxisIsIdentity) {
+    Tensor<float> a({1, 3});
+    IotaFill(a);
+
+    const Tensor<float> m = a.Mean(0);
+
+    EXPECT_EQ(m.Shape(), (std::vector<size_t>{3}));
+    EXPECT_FLOAT_EQ(m(0), 1.0f);
+    EXPECT_FLOAT_EQ(m(2), 3.0f);
+}
+
+TEST(TensorMeanAxis, HandlesANonContiguousSource) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> t = a.Transpose();   // {3,2}
+    ASSERT_FALSE(t.IsContiguous());
+
+    const Tensor<float> m = t.Mean(0);       // average down each column of t
+
+    EXPECT_EQ(m.Shape(), (std::vector<size_t>{2}));
+    EXPECT_FLOAT_EQ(m(0), 2.0f) << "column 0 of t is row 0 of a";
+    EXPECT_FLOAT_EQ(m(1), 5.0f);
+}
+
+TEST(TensorMeanAxis, DoesNotMutateOrAliasTheSource) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> m = a.Mean(1, true);
+
+    EXPECT_FALSE(m.SharesStorage(a));
+    EXPECT_FLOAT_EQ(a(0, 0), 1.0f);
+    EXPECT_FLOAT_EQ(a(1, 2), 6.0f);
+}
+
+TEST(TensorMeanAxis, RejectsAnOutOfRangeAxis) {
+    Tensor<float> a({2, 3}, 1.0f);
+
+    EXPECT_THROW(a.Mean(2), std::invalid_argument);
+    EXPECT_THROW(a.Mean(static_cast<size_t>(-1)), std::invalid_argument);
+}
+
+TEST(TensorMeanAxis, FreeFormForwardsToTheMember) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    EXPECT_FLOAT_EQ(math::Mean(a, 1)(0), a.Mean(1)(0));
+    EXPECT_EQ(math::Mean(a, 1, true).Shape(), a.Mean(1, true).Shape());
+}
+
+TEST(TensorMeanAxis, WorksWithDouble) {
+    Tensor<double> a({2, 2});
+    a(0, 0) = 1.0; a(0, 1) = 2.0;
+    a(1, 0) = 3.0; a(1, 1) = 4.0;
+
+    const Tensor<double> m = a.Mean(0);
+
+    EXPECT_DOUBLE_EQ(m(0), 2.0);
+    EXPECT_DOUBLE_EQ(m(1), 3.0);
+}
+
+// --- scalar add / subtract --------------------------------------------------
+
+TEST(TensorScalarArithmetic, AddAssignShiftsEveryElement) {
+    Tensor<float> a({2, 3}, 1.0f);
+    a += 4.0f;
+
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            EXPECT_FLOAT_EQ(a(i, j), 5.0f);
+        }
+    }
+}
+
+TEST(TensorScalarArithmetic, SubtractAssignShiftsEveryElement) {
+    Tensor<float> a({2, 2}, 10.0f);
+    a -= 3.0f;
+
+    EXPECT_FLOAT_EQ(a(0, 0), 7.0f);
+    EXPECT_FLOAT_EQ(a(1, 1), 7.0f);
+}
+
+TEST(TensorScalarArithmetic, CompoundFormsReturnAReference) {
+    Tensor<float> a({1, 2}, 0.0f);
+    (a += 1.0f) += 2.0f;
+
+    EXPECT_FLOAT_EQ(a(0, 0), 3.0f);
+}
+
+TEST(TensorScalarArithmetic, AddsScalarOnTheRight) {
+    Tensor<float> a({2, 2}, 1.0f);
+
+    const Tensor<float> r = a + 2.0f;
+
+    EXPECT_FLOAT_EQ(r(0, 0), 3.0f);
+    EXPECT_FLOAT_EQ(a(0, 0), 1.0f) << "operand must be untouched";
+    EXPECT_FALSE(r.SharesStorage(a));
+}
+
+TEST(TensorScalarArithmetic, AddsScalarOnTheLeft) {
+    Tensor<float> a({2, 2}, 1.0f);
+
+    const Tensor<float> r = 2.0f + a;
+
+    EXPECT_FLOAT_EQ(r(0, 0), 3.0f);
+    EXPECT_FLOAT_EQ(a(0, 0), 1.0f);
+}
+
+TEST(TensorScalarArithmetic, AdditionCommutes) {
+    Tensor<float> a({2, 2}, 4.0f);
+    EXPECT_FLOAT_EQ((a + 3.0f)(1, 1), (3.0f + a)(1, 1));
+}
+
+TEST(TensorScalarArithmetic, SubtractsScalarOnTheRight) {
+    Tensor<float> a({2, 2}, 10.0f);
+
+    const Tensor<float> r = a - 4.0f;
+
+    EXPECT_FLOAT_EQ(r(0, 0), 6.0f);
+    EXPECT_FLOAT_EQ(a(0, 0), 10.0f);
+}
+
+TEST(TensorScalarArithmetic, SubtractionDoesNotCommute) {
+    // 10 - t must be 10 - t[i], not t[i] - 10.
+    Tensor<float> a({2, 2}, 4.0f);
+
+    const Tensor<float> right = a - 10.0f;
+    const Tensor<float> left = 10.0f - a;
+
+    EXPECT_FLOAT_EQ(right(0, 0), -6.0f);
+    EXPECT_FLOAT_EQ(left(0, 0), 6.0f);
+}
+
+TEST(TensorScalarArithmetic, ScalarSubtractHandlesMixedSigns) {
+    Tensor<float> a({1, 3});
+    a(0, 0) = -2.0f; a(0, 1) = 0.0f; a(0, 2) = 5.0f;
+
+    const Tensor<float> r = 1.0f - a;
+
+    EXPECT_FLOAT_EQ(r(0, 0), 3.0f);
+    EXPECT_FLOAT_EQ(r(0, 1), 1.0f);
+    EXPECT_FLOAT_EQ(r(0, 2), -4.0f);
+}
+
+TEST(TensorScalarArithmetic, WorksThroughANonContiguousView) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    Tensor<float> t = a.Transpose();
+    t += 10.0f;
+
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            EXPECT_FLOAT_EQ(a(i, j), static_cast<float>(i * 3 + j + 1) + 10.0f)
+                << "at (" << i << ", " << j << ")";
+        }
+    }
+}
+
+TEST(TensorScalarArithmetic, PreservesShape) {
+    Tensor<float> a({2, 3, 4}, 1.0f);
+
+    EXPECT_EQ((a + 1.0f).Shape(), (std::vector<size_t>{2, 3, 4}));
+    EXPECT_EQ((1.0f - a).Shape(), (std::vector<size_t>{2, 3, 4}));
+}
+
+TEST(TensorScalarArithmetic, WorksWithDouble) {
+    Tensor<double> a({1, 2}, 1.5);
+
+    EXPECT_DOUBLE_EQ((a + 0.5)(0, 0), 2.0);
+    EXPECT_DOUBLE_EQ((0.5 - a)(0, 0), -1.0);
 }
 
 // --- element type -----------------------------------------------------------

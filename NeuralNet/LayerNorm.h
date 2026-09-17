@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "Math/tensor.h"
+#include "Math/Tensor.h"
 #include "Module.h"
 
 namespace nn{

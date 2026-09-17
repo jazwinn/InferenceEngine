@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <span>
@@ -63,7 +64,7 @@ namespace math {
 
     }
 
-    template <typename T = float>
+    template <typename T >
     class Tensor {
     public:
         Tensor() = default;
@@ -316,6 +317,16 @@ namespace math {
             });
         }
 
+        Tensor<T>& operator+=(const T& scalar) {
+            ForEach([&scalar](T& element) { element += scalar; });
+            return *this;
+        }
+
+        Tensor<T>& operator-=(const T& scalar) {
+            ForEach([&scalar](T& element) { element -= scalar; });
+            return *this;
+        }
+
         Tensor<T>& operator*=(const T& scalar) {
             ForEach([&scalar](T& element) { element *= scalar; });
             return *this;
@@ -327,6 +338,81 @@ namespace math {
             }
             ForEach([&scalar](T& element) { element /= scalar; });
             return *this;
+        }
+
+        Tensor<T> Sqrt() const {
+            Tensor<T> result = Clone();
+            result.ForEach([](T& element) { element = std::sqrt(element); });
+            return result;
+        }
+
+        Tensor<T> Mean() const {
+            if (Size() == 0) {
+                throw std::invalid_argument("Cannot compute mean of an empty tensor.");
+            }
+            T sum = T(0);
+            ForEach([&sum](const T& element) { sum += element; });
+            return Tensor<T>({1}, sum / static_cast<T>(Size()));
+        }
+
+        Tensor<T> Mean(size_t axis, bool keepdim = false) const {
+            if (axis >= m_shape.size()) {
+                throw std::invalid_argument("Axis is out of bounds for Mean operation.");
+            }
+
+            const size_t n = m_shape.size();
+            const size_t reduced = m_shape[axis];
+
+            std::vector<size_t> new_shape = m_shape;
+            if (keepdim) {
+                new_shape[axis] = 1;
+            } else {
+                new_shape.erase(new_shape.begin() + axis);
+            }
+
+            Tensor<T> result(new_shape);
+
+            // Output strides mapped onto this tensor's axes; the reduced axis
+            // gets 0 so every element of a group accumulates into one slot.
+            const std::vector<size_t> result_stride = detail::RowMajorStrides(new_shape);
+            std::vector<size_t> out_stride(n, 0);
+            for (size_t i = 0, k = 0; i < n; ++i) {
+                if (i == axis) {
+                    if (keepdim) {
+                        ++k;
+                    }
+                } else {
+                    out_stride[i] = result_stride[k++];
+                }
+            }
+
+            const T* in = Data();
+            T* out = result.Data();
+            std::vector<size_t> index(n, 0);
+            size_t in_offset = 0;
+            size_t out_offset = 0;
+
+            for (size_t c = 0; c < m_size; ++c) {
+                out[out_offset] += in[in_offset];
+
+                for (size_t ax = n; ax-- > 0; ) {
+                    ++index[ax];
+                    in_offset += m_stride[ax];
+                    out_offset += out_stride[ax];
+                    if (index[ax] < m_shape[ax]) {
+                        break;
+                    }
+                    index[ax] = 0;
+                    in_offset -= m_stride[ax] * m_shape[ax];
+                    out_offset -= out_stride[ax] * m_shape[ax];
+                }
+            }
+
+            for (size_t i = 0; i < result.Size(); ++i) {
+                out[i] /= static_cast<T>(reduced);
+            }
+
+            return result;
         }
 
     private:
@@ -488,22 +574,22 @@ namespace math {
         return result;
     }
 
-    template <typename T = float>
+    template <typename T >
     Tensor<T> operator+(const Tensor<T>& lhs, const Tensor<T>& rhs) {
         return Zip(lhs, rhs, [](T a, T b) { return a + b; });
     }
 
-    template <typename T = float>
+    template <typename T >
     Tensor<T> operator-(const Tensor<T>& lhs, const Tensor<T>& rhs) {
         return Zip(lhs, rhs, [](T a, T b) { return a - b; });
     }
 
-    template <typename T = float>
+    template <typename T >
     Tensor<T> operator*(const Tensor<T>& lhs, const Tensor<T>& rhs) {
         return Zip(lhs, rhs, [](T a, T b) { return a * b; });
     }
 
-    template <typename T = float>
+    template <typename T >
     Tensor<T> operator/(const Tensor<T>& lhs, const Tensor<T>& rhs) {
         return Zip(lhs, rhs, [](T a, T b) {
             if (b == T(0)) {
@@ -513,28 +599,55 @@ namespace math {
         });
     }
 
-    template <typename T = float>
+    template <typename T>
+    Tensor<T> operator+(const Tensor<T>& lhs, const T& scalar) {
+        Tensor<T> result = lhs.Clone();
+        result += scalar;
+        return result;
+    }
+
+    template <typename T>
+    Tensor<T> operator+(const T& scalar, const Tensor<T>& rhs) {
+        return rhs + scalar;
+    }
+
+    template <typename T>
+    Tensor<T> operator-(const Tensor<T>& lhs, const T& scalar) {
+        Tensor<T> result = lhs.Clone();
+        result -= scalar;
+        return result;
+    }
+
+    template <typename T>
+    Tensor<T> operator-(const T& scalar, const Tensor<T>& rhs) {
+        Tensor<T> result = rhs.Clone();
+        result *= static_cast<T>(-1);
+        result += scalar;
+        return result;
+    }
+
+    template <typename T >
     Tensor<T> operator*(const Tensor<T>& lhs, const T& scalar) {
         Tensor<T> result = lhs.Clone();
         result *= scalar;
         return result;
     }
 
-    template <typename T = float>
+    template <typename T >
     Tensor<T> operator*(const T& scalar, const Tensor<T>& rhs) {
         Tensor<T> result = rhs.Clone();
         result *= scalar;
         return result;
     }
 
-    template <typename T = float>
+    template <typename T>
     Tensor<T> operator/(const Tensor<T>& lhs, const T& scalar) {
         Tensor<T> result = lhs.Clone();
         result /= scalar;
         return result;
     }
 
-    template <typename T = float>
+    template <typename T>
     Tensor<T> MatMul(const Tensor<T>& A, const Tensor<T>& B) {
         if(A.Rank() != 2 || B.Rank() != 2) {
             throw std::invalid_argument("Both tensors must be 2D for matrix multiplication.");
@@ -559,9 +672,29 @@ namespace math {
         return result;
     }
 
-    template <typename T = float>
+    template <typename T>
     Tensor<T> Transpose(const Tensor<T>& tensor) {
         return tensor.Transpose();
+    }
+
+    template <typename T>
+    Tensor<T> Transpose(const Tensor<T>& tensor, size_t dim0, size_t dim1) {
+        return tensor.Transpose(dim0, dim1);
+    }
+
+    template <typename T>
+    Tensor<T> Sqrt(const Tensor<T>& tensor) {
+        return tensor.Sqrt();
+    }
+
+    template <typename T>
+    Tensor<T> Mean(const Tensor<T>& tensor) {
+        return tensor.Mean();
+    }
+
+    template <typename T>
+    Tensor<T> Mean(const Tensor<T>& tensor, size_t axis, bool keepdim = false) {
+        return tensor.Mean(axis, keepdim);
     }
 
 }
