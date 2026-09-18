@@ -10,9 +10,9 @@ namespace nn {
 
     using activation::Softmax;
     template <typename T>
-    class Attention : public nn::Module<T> {
+    class MultiHeadAttention : public nn::Module<T> {
     public:
-        Attention(size_t d_model, size_t num_heads, bool use_bias = true) :
+        MultiHeadAttention(size_t d_model, size_t num_heads, bool use_bias = true) :
             d_model(d_model),
             num_heads(num_heads),
             head_dim(ValidatedHeadDim(d_model, num_heads)),
@@ -30,10 +30,10 @@ namespace nn {
 
         static size_t ValidatedHeadDim(size_t d_model, size_t num_heads) {
             if (num_heads == 0) {
-                throw std::invalid_argument("Attention: num_heads must be greater than zero.");
+                throw std::invalid_argument("MultiHeadAttention: num_heads must be greater than zero.");
             }
             if (d_model % num_heads != 0) {
-                throw std::invalid_argument("Attention: d_model must be divisible by num_heads.");
+                throw std::invalid_argument("MultiHeadAttention: d_model must be divisible by num_heads.");
             }
             return d_model / num_heads;
         }
@@ -66,8 +66,9 @@ namespace nn {
             if(causal){
                 const size_t seq_length = scores.Shape()[scores.Rank() - 1];
                 Tensor<bool> causal_mask({seq_length, seq_length}, false);
+
                 for (size_t i = 0; i < seq_length; ++i) {
-                    for (size_t j = 0; j <= i; ++j) {
+                    for (size_t j = i + 1; j < seq_length; ++j) {
                         causal_mask(i, j) = true;
                     }
                 }
@@ -80,13 +81,7 @@ namespace nn {
 
             Tensor<T> attention_weights = Softmax<T>(-1)(scores);
             Tensor<T> context = MatMul(attention_weights, V);
-            Tensor<T> output = (*output_proj)(MergeHeads(context));
-
-            if(mask.Size() > 0){
-                output = output.MaskedFill(mask, T(0));
-            }
-
-            return output;
+            return (*output_proj)(MergeHeads(context));
         }
 
         template <typename... Args>
