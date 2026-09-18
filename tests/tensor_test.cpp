@@ -1536,6 +1536,290 @@ TEST(TensorScalarArithmetic, WorksWithDouble) {
     EXPECT_DOUBLE_EQ((0.5 - a)(0, 0), -1.0);
 }
 
+// --- batched matmul ---------------------------------------------------------
+
+TEST(TensorMatMulBatched, RankThreeMultipliesEachBatchIndependently) {
+    // batch 0: [[1 2],[3 4]]   batch 1: [[5 6],[7 8]]
+    Tensor<float> a({2, 2, 2});
+    IotaFill(a);
+    Tensor<float> b({2, 2, 2});
+    IotaFill(b);
+
+    const Tensor<float> c = math::MatMul(a, b);
+
+    ASSERT_EQ(c.Shape(), (std::vector<size_t>{2, 2, 2}));
+
+    // [[1 2],[3 4]] x [[1 2],[3 4]] = [[7 10],[15 22]]
+    EXPECT_FLOAT_EQ(c(0, 0, 0), 7.0f);
+    EXPECT_FLOAT_EQ(c(0, 0, 1), 10.0f);
+    EXPECT_FLOAT_EQ(c(0, 1, 0), 15.0f);
+    EXPECT_FLOAT_EQ(c(0, 1, 1), 22.0f);
+
+    // [[5 6],[7 8]] x [[5 6],[7 8]] = [[67 78],[91 106]]
+    EXPECT_FLOAT_EQ(c(1, 0, 0), 67.0f);
+    EXPECT_FLOAT_EQ(c(1, 0, 1), 78.0f);
+    EXPECT_FLOAT_EQ(c(1, 1, 0), 91.0f);
+    EXPECT_FLOAT_EQ(c(1, 1, 1), 106.0f);
+}
+
+TEST(TensorMatMulBatched, BatchesDoNotLeakIntoEachOther) {
+    Tensor<float> a({2, 1, 2}, 0.0f);
+    a(0, 0, 0) = 1.0f; a(0, 0, 1) = 1.0f;
+    a(1, 0, 0) = 100.0f; a(1, 0, 1) = 100.0f;
+
+    Tensor<float> b({2, 2, 1}, 1.0f);
+
+    const Tensor<float> c = math::MatMul(a, b);
+
+    ASSERT_EQ(c.Shape(), (std::vector<size_t>{2, 1, 1}));
+    EXPECT_FLOAT_EQ(c(0, 0, 0), 2.0f);
+    EXPECT_FLOAT_EQ(c(1, 0, 0), 200.0f);
+}
+
+TEST(TensorMatMulBatched, NonSquareShapesPropagate) {
+    Tensor<float> a({3, 2, 4}, 1.0f);
+    Tensor<float> b({3, 4, 5}, 1.0f);
+
+    const Tensor<float> c = math::MatMul(a, b);
+
+    EXPECT_EQ(c.Shape(), (std::vector<size_t>{3, 2, 5}));
+    EXPECT_FLOAT_EQ(c(0, 0, 0), 4.0f) << "sum over the shared dimension of 4";
+}
+
+TEST(TensorMatMulBatched, RankFourBatchesOverTwoLeadingAxes) {
+    Tensor<float> a({2, 3, 2, 2}, 1.0f);
+    Tensor<float> b({2, 3, 2, 2}, 2.0f);
+
+    const Tensor<float> c = math::MatMul(a, b);
+
+    EXPECT_EQ(c.Shape(), (std::vector<size_t>{2, 3, 2, 2}));
+    EXPECT_FLOAT_EQ(c(1, 2, 1, 1), 4.0f);
+}
+
+TEST(TensorMatMulBatched, BatchDimensionsBroadcast) {
+    // A rank-2 operand applies to every batch of the rank-3 one.
+    Tensor<float> a({3, 2, 2}, 1.0f);
+    Tensor<float> b({2, 2}, 2.0f);
+
+    const Tensor<float> c = math::MatMul(a, b);
+
+    ASSERT_EQ(c.Shape(), (std::vector<size_t>{3, 2, 2}));
+    for (size_t batch = 0; batch < 3; ++batch) {
+        EXPECT_FLOAT_EQ(c(batch, 0, 0), 4.0f) << "batch " << batch;
+    }
+}
+
+TEST(TensorMatMulBatched, BroadcastsALengthOneBatchAxis) {
+    Tensor<float> a({1, 2, 2}, 1.0f);
+    Tensor<float> b({4, 2, 2}, 1.0f);
+
+    const Tensor<float> c = math::MatMul(a, b);
+
+    EXPECT_EQ(c.Shape(), (std::vector<size_t>{4, 2, 2}));
+    EXPECT_FLOAT_EQ(c(3, 1, 1), 2.0f);
+}
+
+TEST(TensorMatMulBatched, RejectsIncompatibleBatchShapes) {
+    Tensor<float> a({2, 2, 2}, 1.0f);
+    Tensor<float> b({3, 2, 2}, 1.0f);
+
+    EXPECT_THROW(math::MatMul(a, b), std::invalid_argument);
+}
+
+TEST(TensorMatMulBatched, RejectsMismatchedInnerDimension) {
+    Tensor<float> a({2, 2, 3}, 1.0f);
+    Tensor<float> b({2, 4, 2}, 1.0f);
+
+    EXPECT_THROW(math::MatMul(a, b), std::invalid_argument);
+}
+
+TEST(TensorMatMulBatched, MatchesPerBatchTwoDimensionalResults) {
+    Tensor<float> a({2, 2, 3});
+    IotaFill(a);
+    Tensor<float> b({2, 3, 2});
+    IotaFill(b);
+
+    const Tensor<float> batched = math::MatMul(a, b);
+
+    for (size_t batch = 0; batch < 2; ++batch) {
+        Tensor<float> a2({2, 3});
+        Tensor<float> b2({3, 2});
+        for (size_t i = 0; i < 2; ++i)
+            for (size_t j = 0; j < 3; ++j) a2(i, j) = a(batch, i, j);
+        for (size_t i = 0; i < 3; ++i)
+            for (size_t j = 0; j < 2; ++j) b2(i, j) = b(batch, i, j);
+
+        const Tensor<float> expected = math::MatMul(a2, b2);
+        for (size_t i = 0; i < 2; ++i) {
+            for (size_t j = 0; j < 2; ++j) {
+                EXPECT_FLOAT_EQ(batched(batch, i, j), expected(i, j))
+                    << "batch " << batch << " at (" << i << ", " << j << ")";
+            }
+        }
+    }
+}
+
+TEST(TensorMatMulBatched, AcceptsATransposedViewAsTheRightOperand) {
+    // The shape attention needs: {heads, seq, dim} x {heads, dim, seq}.
+    Tensor<float> q({2, 3, 4});
+    IotaFill(q);
+
+    const Tensor<float> scores = math::MatMul(q, q.Transpose(1, 2));
+
+    ASSERT_EQ(scores.Shape(), (std::vector<size_t>{2, 3, 3}));
+
+    // Each entry is a dot product of two rows of the same head.
+    for (size_t h = 0; h < 2; ++h) {
+        for (size_t i = 0; i < 3; ++i) {
+            for (size_t j = 0; j < 3; ++j) {
+                float expected = 0.0f;
+                for (size_t d = 0; d < 4; ++d) expected += q(h, i, d) * q(h, j, d);
+                EXPECT_FLOAT_EQ(scores(h, i, j), expected)
+                    << "head " << h << " at (" << i << ", " << j << ")";
+            }
+        }
+    }
+}
+
+TEST(TensorMatMulBatched, ScoreMatrixIsSymmetricForSelfAttention) {
+    Tensor<float> q({1, 3, 2});
+    IotaFill(q);
+
+    const Tensor<float> scores = math::MatMul(q, q.Transpose(1, 2));
+
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            EXPECT_FLOAT_EQ(scores(0, i, j), scores(0, j, i));
+        }
+    }
+}
+
+TEST(TensorMatMulBatched, HandlesNonContiguousLeftOperand) {
+    Tensor<float> a({2, 4, 3});
+    IotaFill(a);
+
+    const Tensor<float> view = a.Transpose(1, 2);   // {2,3,4}, non-contiguous
+    ASSERT_FALSE(view.IsContiguous());
+
+    Tensor<float> b({2, 4, 1}, 1.0f);
+    const Tensor<float> c = math::MatMul(view, b);
+
+    ASSERT_EQ(c.Shape(), (std::vector<size_t>{2, 3, 1}));
+    for (size_t batch = 0; batch < 2; ++batch) {
+        for (size_t i = 0; i < 3; ++i) {
+            float expected = 0.0f;
+            for (size_t k = 0; k < 4; ++k) expected += view(batch, i, k);
+            EXPECT_FLOAT_EQ(c(batch, i, 0), expected);
+        }
+    }
+}
+
+TEST(TensorMatMulBatched, StillRejectsRankOneOperands) {
+    Tensor<float> vec({3}, 1.0f);
+    Tensor<float> mat({3, 3}, 1.0f);
+
+    EXPECT_THROW(math::MatMul(vec, mat), std::invalid_argument);
+    EXPECT_THROW(math::MatMul(mat, vec), std::invalid_argument);
+}
+
+TEST(TensorMatMulBatched, WorksWithDouble) {
+    Tensor<double> a({2, 2, 2}, 0.5);
+    Tensor<double> b({2, 2, 2}, 4.0);
+
+    const Tensor<double> c = math::MatMul(a, b);
+
+    EXPECT_EQ(c.Shape(), (std::vector<size_t>{2, 2, 2}));
+    EXPECT_DOUBLE_EQ(c(1, 0, 0), 4.0);
+}
+
+// --- negative axis indexing -------------------------------------------------
+
+TEST(TensorTransposeNegative, MinusOneIsTheLastAxis) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> viaNegative = a.Transpose(-2, -1);
+    const Tensor<float> viaPositive = a.Transpose(0, 1);
+
+    EXPECT_EQ(viaNegative.Shape(), viaPositive.Shape());
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 2; ++j) {
+            EXPECT_FLOAT_EQ(viaNegative(i, j), viaPositive(i, j));
+        }
+    }
+}
+
+TEST(TensorTransposeNegative, SwapsTheLastTwoAxesAtRankThree) {
+    Tensor<float> a({2, 3, 4});
+    IotaFill(a);
+
+    const Tensor<float> t = a.Transpose(-2, -1);
+
+    ASSERT_EQ(t.Shape(), (std::vector<size_t>{2, 4, 3}));
+    for (size_t h = 0; h < 2; ++h)
+        for (size_t i = 0; i < 3; ++i)
+            for (size_t j = 0; j < 4; ++j)
+                EXPECT_FLOAT_EQ(t(h, j, i), a(h, i, j));
+}
+
+TEST(TensorTransposeNegative, SameExpressionWorksAtAnyRank) {
+    // The point of -2,-1: identical code for {H,S,D} and {B,H,S,D}.
+    Tensor<float> rank3({2, 3, 4}, 1.0f);
+    Tensor<float> rank4({2, 3, 4, 5}, 1.0f);
+
+    EXPECT_EQ(rank3.Transpose(-2, -1).Shape(), (std::vector<size_t>{2, 4, 3}));
+    EXPECT_EQ(rank4.Transpose(-2, -1).Shape(), (std::vector<size_t>{2, 3, 5, 4}));
+}
+
+TEST(TensorTransposeNegative, MixesSignedAndUnsignedAxes) {
+    Tensor<float> a({2, 3, 4});
+    IotaFill(a);
+
+    const Tensor<float> mixed = a.Transpose(0, -1);
+    const Tensor<float> plain = a.Transpose(0, 2);
+
+    EXPECT_EQ(mixed.Shape(), plain.Shape());
+    EXPECT_FLOAT_EQ(mixed(3, 2, 1), plain(3, 2, 1));
+}
+
+TEST(TensorTransposeNegative, StillSharesStorage) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    EXPECT_TRUE(a.Transpose(-2, -1).SharesStorage(a));
+}
+
+TEST(TensorTransposeNegative, RejectsOutOfRangeNegativeAxes) {
+    Tensor<float> a({2, 3}, 1.0f);
+
+    EXPECT_THROW(a.Transpose(-3, 0), std::invalid_argument);
+    EXPECT_THROW(a.Transpose(0, -4), std::invalid_argument);
+}
+
+TEST(TensorTransposeNegative, FreeFormAcceptsNegativeAxes) {
+    Tensor<float> a({2, 3, 4});
+    IotaFill(a);
+
+    EXPECT_EQ(math::Transpose(a, -2, -1).Shape(), (std::vector<size_t>{2, 4, 3}));
+}
+
+TEST(TensorTransposeNegative, FeedsBatchedMatMulDirectly) {
+    // The attention expression, rank-agnostic.
+    Tensor<float> q({2, 3, 4});
+    IotaFill(q);
+
+    const Tensor<float> scores = math::MatMul(q, q.Transpose(-2, -1));
+
+    ASSERT_EQ(scores.Shape(), (std::vector<size_t>{2, 3, 3}));
+    for (size_t h = 0; h < 2; ++h) {
+        for (size_t i = 0; i < 3; ++i) {
+            float expected = 0.0f;
+            for (size_t d = 0; d < 4; ++d) expected += q(h, i, d) * q(h, i, d);
+            EXPECT_FLOAT_EQ(scores(h, i, i), expected);
+        }
+    }
+}
+
 // --- element type -----------------------------------------------------------
 
 TEST(TensorElementType, WorksWithDouble) {

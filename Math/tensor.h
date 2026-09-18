@@ -44,6 +44,15 @@ namespace math {
             return result;
         }
 
+        inline size_t NormalizeAxis(long long axis, size_t rank) {
+            const long long signed_rank = static_cast<long long>(rank);
+            const long long normalized = axis < 0 ? axis + signed_rank : axis;
+            if (normalized < 0 || normalized >= signed_rank) {
+                throw std::invalid_argument("Axis is out of range for this tensor.");
+            }
+            return static_cast<size_t>(normalized);
+        }
+
         inline size_t ElementCount(const std::vector<size_t>& shape) {
             size_t total = 1;
             for (size_t d : shape) {
@@ -284,8 +293,10 @@ namespace math {
             return Permute(ReversedAxes());
         }
 
-        Tensor<T> Transpose(size_t dim0, size_t dim1) const {
-            return Permute(SwappedAxes(dim0, dim1));
+        Tensor<T> Transpose(long long dim0, long long dim1) const {
+            const size_t rank = m_shape.size();
+            return Permute(SwappedAxes(detail::NormalizeAxis(dim0, rank),
+                                       detail::NormalizeAxis(dim1, rank)));
         }
 
         Tensor<T> Contiguous() const {
@@ -649,23 +660,74 @@ namespace math {
 
     template <typename T>
     Tensor<T> MatMul(const Tensor<T>& A, const Tensor<T>& B) {
-        if(A.Rank() != 2 || B.Rank() != 2) {
-            throw std::invalid_argument("Both tensors must be 2D for matrix multiplication.");
+        if (A.Rank() < 2 || B.Rank() < 2) {
+            throw std::invalid_argument("MatMul operands must have at least two dimensions.");
         }
-        if (A.Shape()[1] != B.Shape()[0]) {
+
+        const std::vector<size_t>& a_shape = A.Shape();
+        const std::vector<size_t>& b_shape = B.Shape();
+        const std::vector<size_t>& a_stride = A.Strides();
+        const std::vector<size_t>& b_stride = B.Strides();
+
+        const size_t rows = a_shape[a_shape.size() - 2];
+        const size_t inner = a_shape[a_shape.size() - 1];
+        const size_t cols = b_shape[b_shape.size() - 1];
+        if (inner != b_shape[b_shape.size() - 2]) {
             throw std::invalid_argument("Inner dimensions must match for matrix multiplication.");
         }
 
-        std::vector<size_t> result_shape = { A.Shape()[0], B.Shape()[1] };
+        const std::vector<size_t> a_batch(a_shape.begin(), a_shape.end() - 2);
+        const std::vector<size_t> b_batch(b_shape.begin(), b_shape.end() - 2);
+        const std::vector<size_t> batch = detail::BroadcastShape(a_batch, b_batch);
+
+        std::vector<size_t> result_shape = batch;
+        result_shape.push_back(rows);
+        result_shape.push_back(cols);
         Tensor<T> result(result_shape);
 
-        for (size_t i = 0; i < A.Shape()[0]; ++i) {
-            for (size_t j = 0; j < B.Shape()[1]; ++j) {
-                T sum = T(0);
-                for (size_t k = 0; k < A.Shape()[1]; ++k) {
-                    sum += A(i, k) * B(k, j);
+        const std::vector<size_t> a_batch_stride = detail::BroadcastStrides(
+            a_batch, std::vector<size_t>(a_stride.begin(), a_stride.end() - 2), batch);
+        const std::vector<size_t> b_batch_stride = detail::BroadcastStrides(
+            b_batch, std::vector<size_t>(b_stride.begin(), b_stride.end() - 2), batch);
+
+        const size_t a_row_stride = a_stride[a_shape.size() - 2];
+        const size_t a_col_stride = a_stride[a_shape.size() - 1];
+        const size_t b_row_stride = b_stride[b_shape.size() - 2];
+        const size_t b_col_stride = b_stride[b_shape.size() - 1];
+
+        const T* a_data = A.Data();
+        const T* b_data = B.Data();
+        T* out = result.Data();
+
+        const size_t batch_rank = batch.size();
+        const size_t batch_count = detail::ElementCount(batch);
+
+        std::vector<size_t> index(batch_rank, 0);
+        size_t a_offset = 0;
+        size_t b_offset = 0;
+
+        for (size_t c = 0; c < batch_count; ++c) {
+            T* block = out + c * rows * cols;
+
+            for (size_t i = 0; i < rows; ++i) {
+                for (size_t k = 0; k < inner; ++k) {
+                    const T a_ik = a_data[a_offset + i * a_row_stride + k * a_col_stride];
+                    for (size_t j = 0; j < cols; ++j) {
+                        block[i * cols + j] += a_ik * b_data[b_offset + k * b_row_stride + j * b_col_stride];
+                    }
                 }
-                result(i, j) = sum;
+            }
+
+            for (size_t ax = batch_rank; ax-- > 0; ) {
+                ++index[ax];
+                a_offset += a_batch_stride[ax];
+                b_offset += b_batch_stride[ax];
+                if (index[ax] < batch[ax]) {
+                    break;
+                }
+                index[ax] = 0;
+                a_offset -= a_batch_stride[ax] * batch[ax];
+                b_offset -= b_batch_stride[ax] * batch[ax];
             }
         }
 
@@ -678,7 +740,7 @@ namespace math {
     }
 
     template <typename T>
-    Tensor<T> Transpose(const Tensor<T>& tensor, size_t dim0, size_t dim1) {
+    Tensor<T> Transpose(const Tensor<T>& tensor, long long dim0, long long dim1) {
         return tensor.Transpose(dim0, dim1);
     }
 

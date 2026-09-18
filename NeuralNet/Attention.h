@@ -11,8 +11,7 @@ namespace nn {
             d_model(d_model),
             num_heads(num_heads),
             head_dim(d_model / num_heads),
-            scale(std::sqrt(static_cast<T>(head_dim))) {
-
+            scale(std::sqrt(static_cast<T>(head_dim))),
             query(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
             key(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
             value(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
@@ -25,18 +24,14 @@ namespace nn {
         }
 
         Tensor<T> SplitHeads(const Tensor<T>& x) {
-            std::vector<size_t> new_shape = {x.Shape()[0], num_heads, head_dim};
+            std::vector<size_t> new_shape = {x.Shape()[0],, num_heads, head_dim};
             return x.Reshape(new_shape);
         }
 
         Tensor<T> Forward(const Tensor<T>& input) override {
-            Tensor<T> Q = (*query)(input);
-            Tensor<T> K = (*key)(input);
-            Tensor<T> V = (*value)(input);
-
-            Q = SplitHeads(Q);
-            K = SplitHeads(K);
-            V = SplitHeads(V);
+            Tensor<T> Q = SplitHeads((*query)(input));
+            Tensor<T> K = SplitHeads((*key)(input));
+            Tensor<T> V = SplitHeads((*value)(input));
 
             Tensor<T> scores = MatMul(Q, K.Transpose()) / scale;
             Tensor<T> attention_weights = Softmax(scores);
