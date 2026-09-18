@@ -307,13 +307,9 @@ TEST(RMSNormForward, RankThreePositionsAreIndependent) {
 
 // --- Module interface -------------------------------------------------------
 
-TEST(RMSNormModule, DispatchesThroughABasePointer) {
+TEST(RMSNormModule, ReportsParametersThroughABasePointer) {
     std::shared_ptr<Module<float>> m = std::make_shared<RMSNorm<float>>(3);
 
-    Tensor<float> in({2, 3}, 2.0f);
-    const Tensor<float> out = m->Forward(in);
-
-    EXPECT_EQ(out.Shape(), (std::vector<size_t>{2, 3}));
     EXPECT_EQ(m->Parameters().size(), 1u);
 }
 

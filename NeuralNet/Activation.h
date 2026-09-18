@@ -15,7 +15,7 @@ namespace activation {
     template <typename T>
     class ReLU : public Module<T> {
     public:
-        Tensor<T> Forward(const Tensor<T>& input) override {
+        Tensor<T> Forward(const Tensor<T>& input) {
             Tensor<T> output = input.Clone();
 
             std::for_each(output.Data(), output.Data() + output.Size(), [](T& value) {
@@ -31,7 +31,7 @@ namespace activation {
     template <typename T>
     class Sigmoid : public Module<T> {
     public:
-        Tensor<T> Forward(const Tensor<T>& input) override {
+        Tensor<T> Forward(const Tensor<T>& input) {
             Tensor<T> output = input.Clone();
 
             std::for_each(output.Data(), output.Data() + output.Size(), [](T& value) {
@@ -45,7 +45,7 @@ namespace activation {
     template <typename T>
     class Tanh : public Module<T> {
     public:
-        Tensor<T> Forward(const Tensor<T>& input) override {
+        Tensor<T> Forward(const Tensor<T>& input) {
             Tensor<T> output = input.Clone();
 
             std::for_each(output.Data(), output.Data() + output.Size(), [](T& value) {
@@ -61,7 +61,7 @@ namespace activation {
     public:
         explicit Softmax(long long axis = -1) : m_axis(axis) {}
 
-        Tensor<T> Forward(const Tensor<T>& input) override {
+        Tensor<T> Forward(const Tensor<T>& input) {
             const size_t axis = math::detail::NormalizeAxis(m_axis, input.Rank());
 
             // Clone() compacts, so the flat decomposition below holds for views.

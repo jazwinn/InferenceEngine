@@ -14,8 +14,6 @@ namespace nn{
     template <typename T>
     class LayerNorm : public Module<T>{
     public:
-        // Normalises over the trailing axes given by normalized_shape, exactly
-        // like torch.nn.LayerNorm: {3, 4, 5} normalises the last three.
         explicit LayerNorm(std::vector<size_t> normalized_shape, T epsilon = static_cast<T>(1e-5)) :
             m_normalized_shape(std::move(normalized_shape)),
             m_epsilon(epsilon) {
@@ -57,7 +55,7 @@ namespace nn{
             this->RegisterParameter("beta", beta);
         }
 
-        Tensor<T> Forward(const Tensor<T>& input) override {
+        Tensor<T> Forward(const Tensor<T>& input) {
             const std::vector<size_t>& shape = input.Shape();
             const size_t axes = m_normalized_shape.size();
 

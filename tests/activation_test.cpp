@@ -468,20 +468,6 @@ TEST(ActivationModule, HaveNoParameters) {
     EXPECT_TRUE(Softmax<float>().Parameters().empty());
 }
 
-TEST(ActivationModule, DispatchThroughABasePointer) {
-    std::vector<std::shared_ptr<Module<float>>> layers{
-        std::make_shared<ReLU<float>>(),
-        std::make_shared<Sigmoid<float>>(),
-        std::make_shared<Tanh<float>>(),
-    };
-
-    Tensor<float> input({2, 2}, 0.5f);
-    for (const auto& layer : layers) {
-        const Tensor<float> out = layer->Forward(input);
-        EXPECT_EQ(out.Shape(), input.Shape());
-    }
-}
-
 TEST(ActivationModule, ComposeAsASubmodule) {
     ReLU<float> relu;
     auto inner = std::make_shared<Sigmoid<float>>();

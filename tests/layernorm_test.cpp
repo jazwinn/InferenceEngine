@@ -350,16 +350,10 @@ TEST(LayerNormForward, IsRepeatable) {
     }
 }
 
-TEST(LayerNormModule, DispatchesThroughABasePointer) {
+TEST(LayerNormModule, ReportsParametersThroughABasePointer) {
     std::shared_ptr<Module<float>> m =
         std::make_shared<LayerNorm<float>>(std::vector<size_t>{3});
 
-    Tensor<float> in({2, 3});
-    IotaFillFlat(in, 1.0f);
-
-    const Tensor<float> out = m->Forward(in);
-
-    EXPECT_EQ(out.Shape(), (std::vector<size_t>{2, 3}));
     EXPECT_EQ(m->Parameters().size(), 2u);
 }
 

@@ -14,7 +14,7 @@ namespace nn {
             this->RegisterParameter("weight", weight);
         }
 
-        Tensor<T> Forward(const Tensor<T>& input) override {
+        Tensor<T> Forward(const Tensor<T>& input) {
             Tensor<T> mean_square = Mean(input * input, input.Rank() - 1, true);
             Tensor<T> rms = Sqrt(mean_square + epsilon);
             Tensor<T> normalized = input / rms;

@@ -20,7 +20,7 @@ namespace nn{
             }
         }
 
-        Tensor<T> Forward(const Tensor<T>& input) override {
+        Tensor<T> Forward(const Tensor<T>& input) {
             Tensor<T> output = MatMul(input, weight->Transpose());
             if (bias) {
                 output += *bias;

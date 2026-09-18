@@ -15,12 +15,7 @@ namespace nn{
     class Module{
     public:
         virtual ~Module() = default;
-        virtual Tensor<T> Forward(const Tensor<T>& input) = 0;
 
-        Tensor<T> operator()(const Tensor<T>& input) {
-            return Forward(input);
-        }
-        
         void RegisterParameter(const std::string& name, std::shared_ptr<Tensor<T>> parameter){
             m_parameters[name] = parameter;
         }
@@ -40,6 +35,7 @@ namespace nn{
             }
             return params;
         }
+        
 
     private:
         std::unordered_map<std::string, std::shared_ptr<Tensor<T>>> m_parameters;
