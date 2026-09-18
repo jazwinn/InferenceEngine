@@ -5,11 +5,12 @@
 #include "NeuralNet/Linear.h"
 #include "NeuralNet/Activation.h"
 
-namespace nn
+namespace transformer
 {
 
-    using activation::Softmax;
-    
+    using namespace activation;
+    using namespace nn;
+
     template <typename T>
     class MultiHeadAttention : public nn::Module<T>
     {
@@ -55,22 +56,23 @@ namespace nn
             return transposed.Reshape(transposed.Shape()[0], transposed.Shape()[1], d_model); // (batch_size, seq_length, d_model)
         }
 
-        Tensor<T> Forward(const Tensor<T> &input, const Tensor<bool> &mask = Tensor<bool>(), bool causal = false)
+        Tensor<T> Forward(const Tensor<T>& q, const Tensor<T>& k, const Tensor<T>& v, const Tensor<bool>& mask = Tensor<bool>(), bool causal = false)
         {
-            Tensor<T> Q = SplitHeads(query->Forward(input));
-            Tensor<T> K = SplitHeads(key->Forward(input));
-            Tensor<T> V = SplitHeads(value->Forward(input));
+            Tensor<T> Q = SplitHeads(query->Forward(q));
+            Tensor<T> K = SplitHeads(key->Forward(k));
+            Tensor<T> V = SplitHeads(value->Forward(v));
 
             Tensor<T> scores = MatMul(Q, K.Transpose(-2, -1)) / scale;
 
             if (causal)
             {
-                const size_t seq_length = scores.Shape()[scores.Rank() - 1];
-                Tensor<bool> causal_mask({seq_length, seq_length}, false);
+                const size_t seq_q = scores.Shape()[scores.Rank() - 2];
+                const size_t seq_k = scores.Shape()[scores.Rank() - 1];
+                Tensor<bool> causal_mask({seq_q, seq_k}, false);
 
-                for (size_t i = 0; i < seq_length; ++i)
+                for (size_t i = 0; i < seq_q; ++i)
                 {
-                    for (size_t j = i + 1; j < seq_length; ++j)
+                    for (size_t j = i + 1 + (seq_k - seq_q); j < seq_k; ++j)
                     {
                         causal_mask(i, j) = true;
                     }
@@ -86,6 +88,11 @@ namespace nn
             Tensor<T> attention_weights = Softmax<T>(-1).Forward(scores);
             Tensor<T> context = MatMul(attention_weights, V);
             return output_proj->Forward(MergeHeads(context));
+        }
+
+        Tensor<T> Forward(const Tensor<T> &input, const Tensor<bool> &mask = Tensor<bool>(), bool causal = false)
+        {
+            return Forward(input, input, input, mask, causal);
         }
 
         template <typename... Args>

@@ -3,6 +3,7 @@
 #include <NeuralNet/Module.h>
 #include <NeuralNet/Transformer/MultiHeadAttention.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -11,7 +12,7 @@
 
 using math::Tensor;
 using nn::Module;
-using nn::MultiHeadAttention;
+using transformer::MultiHeadAttention;
 
 namespace {
 
@@ -68,6 +69,46 @@ Tensor<T> WeightsOf(MultiHeadAttention<T>& attn, const Tensor<T>& x, bool causal
         scores = scores.MaskedFill(mask, -std::numeric_limits<T>::infinity());
     }
     return activation::Softmax<T>(-1).Forward(scores);
+}
+
+
+// Like GentleFill, but the phase lets separate query, key and value tensors
+// hold different values.
+template <typename T>
+void PhaseFill(Tensor<T>& t, double phase) {
+    int k = 0;
+    for (size_t b = 0; b < t.Shape()[0]; ++b)
+        for (size_t s = 0; s < t.Shape()[1]; ++s)
+            for (size_t d = 0; d < t.Shape()[2]; ++d)
+                t(b, s, d) = static_cast<T>(0.1 * std::sin(0.9 * static_cast<double>(++k) + phase));
+}
+
+// Copies sequence positions [begin, end) of a {B, S, D} tensor.
+template <typename T>
+Tensor<T> Positions(const Tensor<T>& t, size_t begin, size_t end) {
+    Tensor<T> out({t.Shape()[0], end - begin, t.Shape()[2]});
+    for (size_t b = 0; b < t.Shape()[0]; ++b)
+        for (size_t s = begin; s < end; ++s)
+            for (size_t d = 0; d < t.Shape()[2]; ++d) out(b, s - begin, d) = t(b, s, d);
+    return out;
+}
+
+// Largest element-wise difference at sequence position s of two {B, S, D} tensors.
+template <typename T>
+double PositionDiff(const Tensor<T>& a, const Tensor<T>& b, size_t s) {
+    double worst = 0.0;
+    for (size_t n = 0; n < a.Shape()[0]; ++n)
+        for (size_t d = 0; d < a.Shape()[2]; ++d)
+            worst = std::max(worst, static_cast<double>(std::fabs(a(n, s, d) - b(n, s, d))));
+    return worst;
+}
+
+// Largest element-wise difference anywhere in two {B, S, D} tensors.
+template <typename T>
+double MaxAbsDiff(const Tensor<T>& a, const Tensor<T>& b) {
+    double worst = 0.0;
+    for (size_t s = 0; s < a.Shape()[1]; ++s) worst = std::max(worst, PositionDiff(a, b, s));
+    return worst;
 }
 
 }  // namespace
@@ -520,6 +561,365 @@ TEST(MultiHeadAttentionMask, AnEmptyMaskIsIgnored) {
             EXPECT_FLOAT_EQ(withEmpty(0, s, d), without(0, s, d));
 }
 
+// --- separate query, key and value inputs -----------------------------------
+
+TEST(MultiHeadAttentionQKV, SelfAttentionIsTheSpecialCaseOfQKV) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> x({2, 4, 8});
+    PhaseFill(x, 0.0);
+
+    EXPECT_EQ(MaxAbsDiff(attn.Forward(x), attn.Forward(x, x, x)), 0.0);
+}
+
+TEST(MultiHeadAttentionQKV, SelfAttentionPassesMaskAndCausalThrough) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> x({1, 4, 8});
+    PhaseFill(x, 0.0);
+    Tensor<bool> mask({4, 4}, false);
+    for (size_t i = 1; i < 4; ++i) mask(i, 0) = true;   // query 0 keeps key 0, its only causal key
+
+    EXPECT_EQ(MaxAbsDiff(attn.Forward(x, mask, true), attn.Forward(x, x, x, mask, true)), 0.0);
+}
+
+TEST(MultiHeadAttentionQKV, OutputTakesTheQueryLength) {
+    MultiHeadAttention<float> attn(8, 2);
+    Tensor<float> q({2, 3, 8}, 1.0f);
+    Tensor<float> kv({2, 5, 8}, 1.0f);
+
+    EXPECT_EQ(attn.Forward(q, kv, kv).Shape(), (std::vector<size_t>{2, 3, 8}));
+}
+
+TEST(MultiHeadAttentionQKV, MoreQueriesThanKeysIsFine) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 6, 8});
+    Tensor<float> kv({1, 2, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(kv, 1.0);
+
+    const Tensor<float> out = attn.Forward(q, kv, kv);
+
+    ASSERT_EQ(out.Shape(), (std::vector<size_t>{1, 6, 8}));
+    for (size_t s = 0; s < 6; ++s)
+        for (size_t d = 0; d < 8; ++d) EXPECT_FALSE(std::isnan(out(0, s, d)));
+}
+
+TEST(MultiHeadAttentionQKV, CallOperatorForwardsAllThreeInputs) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 2, 8}), k({1, 4, 8}), v({1, 4, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(k, 1.0);
+    PhaseFill(v, 2.0);
+    Tensor<bool> mask({2, 4}, false);
+    mask(1, 0) = true;
+
+    EXPECT_EQ(MaxAbsDiff(attn(q, k, v), attn.Forward(q, k, v)), 0.0);
+    EXPECT_EQ(MaxAbsDiff(attn(q, k, v, mask, true), attn.Forward(q, k, v, mask, true)), 0.0);
+}
+
+TEST(MultiHeadAttentionQKV, DoesNotMutateTheInputs) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 2, 8}), k({1, 3, 8}), v({1, 3, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(k, 1.0);
+    PhaseFill(v, 2.0);
+    const Tensor<float> q0 = q.Clone(), k0 = k.Clone(), v0 = v.Clone();
+
+    const Tensor<float> out = attn.Forward(q, k, v);
+
+    EXPECT_FALSE(out.SharesStorage(q));
+    EXPECT_EQ(MaxAbsDiff(q, q0), 0.0);
+    EXPECT_EQ(MaxAbsDiff(k, k0), 0.0);
+    EXPECT_EQ(MaxAbsDiff(v, v0), 0.0);
+}
+
+TEST(MultiHeadAttentionQKV, ChangingTheValuesChangesTheOutput) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 2, 8}), k({1, 3, 8}), v({1, 3, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(k, 1.0);
+    PhaseFill(v, 2.0);
+    Tensor<float> v2 = v.Clone();
+    for (size_t d = 0; d < 8; ++d) v2(0, 1, d) = 5.0f;
+
+    EXPECT_GT(MaxAbsDiff(attn.Forward(q, k, v), attn.Forward(q, k, v2)), 1e-3);
+}
+
+TEST(MultiHeadAttentionQKV, ChangingTheKeysChangesTheOutput) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 2, 8}), k({1, 3, 8}), v({1, 3, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(k, 1.0);
+    PhaseFill(v, 2.0);
+    Tensor<float> k2 = k.Clone();
+    for (size_t d = 0; d < 8; ++d) k2(0, 1, d) = 5.0f;
+
+    EXPECT_GT(MaxAbsDiff(attn.Forward(q, k, v), attn.Forward(q, k2, v)), 1e-3);
+}
+
+TEST(MultiHeadAttentionQKV, ZeroValuesGiveAZeroOutput) {
+    // Biases start at zero, so zero values project to zero whatever the weights.
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 3, 8}), k({1, 4, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(k, 1.0);
+    Tensor<float> v({1, 4, 8}, 0.0f);
+
+    const Tensor<float> out = attn.Forward(q, k, v);
+
+    for (size_t s = 0; s < 3; ++s)
+        for (size_t d = 0; d < 8; ++d) EXPECT_FLOAT_EQ(out(0, s, d), 0.0f);
+}
+
+TEST(MultiHeadAttentionQKV, ASingleKeyGetsAllTheWeight) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 3, 8}), k({1, 1, 8}), v({1, 1, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(k, 1.0);
+    PhaseFill(v, 2.0);
+
+    const Tensor<float> out = attn.Forward(q, k, v);
+    const Tensor<float> expected = attn.output_proj->Forward(attn.value->Forward(v));
+
+    for (size_t s = 0; s < 3; ++s)
+        for (size_t d = 0; d < 8; ++d)
+            EXPECT_NEAR(out(0, s, d), expected(0, 0, d), kTol) << "query " << s;
+}
+
+TEST(MultiHeadAttentionQKV, IdenticalKeysAverageTheValues) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 2, 8}), k({1, 4, 8}), v({1, 4, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(v, 2.0);
+    for (size_t s = 0; s < 4; ++s)
+        for (size_t d = 0; d < 8; ++d) k(0, s, d) = 0.05f * static_cast<float>(d);
+
+    Tensor<float> mean({1, 1, 8}, 0.0f);
+    for (size_t s = 0; s < 4; ++s)
+        for (size_t d = 0; d < 8; ++d) mean(0, 0, d) += v(0, s, d) / 4.0f;
+
+    const Tensor<float> out = attn.Forward(q, k, v);
+    const Tensor<float> expected = attn.output_proj->Forward(attn.value->Forward(mean));
+
+    for (size_t s = 0; s < 2; ++s)
+        for (size_t d = 0; d < 8; ++d)
+            EXPECT_NEAR(out(0, s, d), expected(0, 0, d), kTol) << "query " << s;
+}
+
+TEST(MultiHeadAttentionQKV, EachQueryIsAnsweredIndependently) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 4, 8}), kv({1, 5, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(kv, 1.0);
+    Tensor<float> q2 = q.Clone();
+    for (size_t d = 0; d < 8; ++d) q2(0, 2, d) = 5.0f;
+
+    const Tensor<float> a = attn.Forward(q, kv, kv);
+    const Tensor<float> b = attn.Forward(q2, kv, kv);
+
+    for (size_t s : {size_t{0}, size_t{1}, size_t{3}})
+        EXPECT_LT(PositionDiff(a, b, s), 1e-6) << "query " << s;
+    EXPECT_GT(PositionDiff(a, b, 2), 1e-3);
+}
+
+TEST(MultiHeadAttentionQKV, PermutingQueriesPermutesTheOutput) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 3, 8}), kv({1, 4, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(kv, 1.0);
+    const size_t order[3] = {2, 0, 1};
+    Tensor<float> shuffled({1, 3, 8});
+    for (size_t s = 0; s < 3; ++s)
+        for (size_t d = 0; d < 8; ++d) shuffled(0, s, d) = q(0, order[s], d);
+
+    const Tensor<float> out = attn.Forward(q, kv, kv);
+    const Tensor<float> out_shuffled = attn.Forward(shuffled, kv, kv);
+
+    for (size_t s = 0; s < 3; ++s)
+        for (size_t d = 0; d < 8; ++d)
+            EXPECT_NEAR(out_shuffled(0, s, d), out(0, order[s], d), 1e-6f);
+}
+
+TEST(MultiHeadAttentionQKV, ReorderingKeyValuePairsLeavesTheOutputUnchanged) {
+    // Without a mask, attention is a weighted sum over key/value pairs, so
+    // their order must not matter.
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 3, 8}), k({1, 4, 8}), v({1, 4, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(k, 1.0);
+    PhaseFill(v, 2.0);
+    const size_t order[4] = {3, 1, 0, 2};
+    Tensor<float> k2({1, 4, 8}), v2({1, 4, 8});
+    for (size_t s = 0; s < 4; ++s)
+        for (size_t d = 0; d < 8; ++d) {
+            k2(0, s, d) = k(0, order[s], d);
+            v2(0, s, d) = v(0, order[s], d);
+        }
+
+    EXPECT_LT(MaxAbsDiff(attn.Forward(q, k, v), attn.Forward(q, k2, v2)), kTol);
+}
+
+TEST(MultiHeadAttentionQKV, RejectsKeysAndValuesOfDifferentLengths) {
+    MultiHeadAttention<float> attn(8, 2);
+    Tensor<float> q({1, 2, 8}, 1.0f), k({1, 5, 8}, 1.0f), v({1, 4, 8}, 1.0f);
+
+    EXPECT_THROW(attn.Forward(q, k, v), std::invalid_argument);
+}
+
+TEST(MultiHeadAttentionQKV, RejectsAMismatchedModelDimension) {
+    MultiHeadAttention<float> attn(8, 2);
+    Tensor<float> good({1, 3, 8}, 1.0f), wrong({1, 3, 6}, 1.0f);
+
+    EXPECT_THROW(attn.Forward(wrong, good, good), std::invalid_argument);
+    EXPECT_THROW(attn.Forward(good, wrong, good), std::invalid_argument);
+    EXPECT_THROW(attn.Forward(good, good, wrong), std::invalid_argument);
+}
+
+// --- masks over queries x keys ----------------------------------------------
+
+TEST(MultiHeadAttentionQKVMask, AMaskedKeyHasNoInfluence) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 3, 8}), kv({1, 5, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(kv, 1.0);
+    Tensor<float> kv2 = kv.Clone();
+    for (size_t d = 0; d < 8; ++d) kv2(0, 4, d) = 5.0f;
+
+    Tensor<bool> mask({3, 5}, false);
+    for (size_t i = 0; i < 3; ++i) mask(i, 4) = true;
+
+    EXPECT_LT(MaxAbsDiff(attn.Forward(q, kv, kv, mask), attn.Forward(q, kv2, kv2, mask)), 1e-6);
+    EXPECT_GT(MaxAbsDiff(attn.Forward(q, kv, kv), attn.Forward(q, kv2, kv2)), 1e-3)
+        << "without the mask the change must be visible";
+}
+
+TEST(MultiHeadAttentionQKVMask, EachMaskRowAppliesToItsOwnQuery) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 2, 8}), kv({1, 4, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(kv, 1.0);
+    Tensor<float> kv2 = kv.Clone();
+    for (size_t d = 0; d < 8; ++d) kv2(0, 3, d) = 5.0f;
+
+    Tensor<bool> mask({2, 4}, false);
+    mask(0, 3) = true;   // only query 0 is blocked from key 3
+
+    const Tensor<float> a = attn.Forward(q, kv, kv, mask);
+    const Tensor<float> b = attn.Forward(q, kv2, kv2, mask);
+
+    EXPECT_LT(PositionDiff(a, b, 0), 1e-6);
+    EXPECT_GT(PositionDiff(a, b, 1), 1e-3);
+}
+
+// --- causal masking with fewer queries than keys ----------------------------
+// Queries line up with the end of the keys, as when decoding against a cache
+// of earlier tokens: with 2 queries over 5 keys they sit at positions 3 and 4.
+
+TEST(MultiHeadAttentionQKVCausal, MatchesTheTailOfFullSelfAttention) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> x({1, 5, 8});
+    PhaseFill(x, 0.0);
+
+    const Tensor<float> full = attn.Forward(x, Tensor<bool>(), true);
+    const Tensor<float> tail = attn.Forward(Positions(x, 3, 5), x, x, Tensor<bool>(), true);
+
+    ASSERT_EQ(tail.Shape(), (std::vector<size_t>{1, 2, 8}));
+    for (size_t s = 0; s < 2; ++s)
+        for (size_t d = 0; d < 8; ++d)
+            EXPECT_NEAR(tail(0, s, d), full(0, s + 3, d), kTol) << "query " << s;
+}
+
+TEST(MultiHeadAttentionQKVCausal, OneQueryAtATimeRebuildsTheSequence) {
+    // Decoding token by token must reproduce the full causal pass.
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> x({1, 5, 8});
+    PhaseFill(x, 0.0);
+
+    const Tensor<float> full = attn.Forward(x, Tensor<bool>(), true);
+
+    for (size_t t = 0; t < 5; ++t) {
+        const Tensor<float> prefix = Positions(x, 0, t + 1);
+        const Tensor<float> step = attn.Forward(Positions(x, t, t + 1), prefix, prefix, Tensor<bool>(), true);
+        for (size_t d = 0; d < 8; ++d)
+            EXPECT_NEAR(step(0, 0, d), full(0, t, d), kTol) << "step " << t;
+    }
+}
+
+TEST(MultiHeadAttentionQKVCausal, ASingleFinalQuerySeesEveryKey) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({1, 1, 8}), kv({1, 4, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(kv, 1.0);
+
+    EXPECT_EQ(MaxAbsDiff(attn.Forward(q, kv, kv, Tensor<bool>(), true), attn.Forward(q, kv, kv)), 0.0);
+}
+
+TEST(MultiHeadAttentionQKVCausal, QueriesIgnoreKeysAfterTheirPosition) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> kv({1, 5, 8});
+    PhaseFill(kv, 1.0);
+    const Tensor<float> q = Positions(kv, 3, 5);   // positions 3 and 4
+    Tensor<float> kv2 = kv.Clone();
+    for (size_t d = 0; d < 8; ++d) kv2(0, 4, d) = 5.0f;
+
+    const Tensor<float> a = attn.Forward(q, kv, kv, Tensor<bool>(), true);
+    const Tensor<float> b = attn.Forward(q, kv2, kv2, Tensor<bool>(), true);
+
+    EXPECT_LT(PositionDiff(a, b, 0), 1e-6) << "position 3 must not see key 4";
+    EXPECT_GT(PositionDiff(a, b, 1), 1e-3) << "position 4 must see key 4";
+}
+
+TEST(MultiHeadAttentionQKVCausal, CombinesWithAnExplicitMask) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> kv({1, 5, 8});
+    PhaseFill(kv, 1.0);
+    const Tensor<float> q = Positions(kv, 3, 5);
+    Tensor<float> kv2 = kv.Clone();
+    for (size_t d = 0; d < 8; ++d) kv2(0, 0, d) = 5.0f;
+
+    Tensor<bool> mask({2, 5}, false);
+    mask(0, 0) = true;
+    mask(1, 0) = true;   // hide key 0 from both queries
+
+    const Tensor<float> a = attn.Forward(q, kv, kv, mask, true);
+    const Tensor<float> b = attn.Forward(q, kv2, kv2, mask, true);
+
+    EXPECT_LT(MaxAbsDiff(a, b), 1e-6);
+}
+
+TEST(MultiHeadAttentionQKVCausal, NoNaNWithFewerQueries) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({2, 3, 8}), kv({2, 7, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(kv, 1.0);
+
+    const Tensor<float> out = attn.Forward(q, kv, kv, Tensor<bool>(), true);
+
+    for (size_t b = 0; b < 2; ++b)
+        for (size_t s = 0; s < 3; ++s)
+            for (size_t d = 0; d < 8; ++d) EXPECT_FALSE(std::isnan(out(b, s, d)));
+}
+
 // --- Module interface -------------------------------------------------------
 
 TEST(MultiHeadAttentionModule, ReportsParametersThroughABasePointer) {
@@ -564,4 +964,18 @@ TEST(MultiHeadAttentionElementType, WorksWithDouble) {
     for (size_t s = 0; s < 3; ++s)
         for (size_t d = 0; d < 8; ++d)
             EXPECT_FALSE(std::isnan(out(0, s, d)));
+}
+
+TEST(MultiHeadAttentionElementType, QKVWorksWithDouble) {
+    MultiHeadAttention<double> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<double> q({1, 2, 8}), kv({1, 4, 8});
+    PhaseFill(q, 0.0);
+    PhaseFill(kv, 1.0);
+
+    const Tensor<double> out = attn.Forward(q, kv, kv, Tensor<bool>(), true);
+
+    EXPECT_EQ(out.Shape(), (std::vector<size_t>{1, 2, 8}));
+    for (size_t s = 0; s < 2; ++s)
+        for (size_t d = 0; d < 8; ++d) EXPECT_FALSE(std::isnan(out(0, s, d)));
 }
