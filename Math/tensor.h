@@ -425,19 +425,41 @@ namespace math {
         }
 
         Tensor<T> MaskedFill(const Tensor<bool>& mask, const T& value) const {
-            if (mask.Shape() != m_shape) {
-                throw std::invalid_argument("Mask shape must match tensor shape for MaskedFill.");
+            if (mask.Size() == 0) {
+                throw std::invalid_argument("MaskedFill requires a non-empty mask.");
+            }
+            if (detail::BroadcastShape(m_shape, mask.Shape()) != m_shape) {
+                throw std::invalid_argument("Mask shape is not broadcast-compatible with the tensor.");
             }
 
+            // Clone() holds this tensor compacted in row-major order, so the
+            // output walks flat while the mask walks its own broadcast strides.
             Tensor<T> result = Clone();
-            const Tensor<bool> flat_mask = mask.Contiguous();
-            const bool* msk = flat_mask.Data();
             T* out = result.Data();
+            const bool* msk = mask.Data();
+            const std::vector<size_t> mask_stride =
+                detail::BroadcastStrides(mask.Shape(), mask.Strides(), m_shape);
+
+            const size_t n = m_shape.size();
+            std::vector<size_t> index(n, 0);
+            size_t mask_offset = 0;
+
             for (size_t i = 0; i < m_size; ++i) {
-                if (msk[i]) {
+                if (msk[mask_offset]) {
                     out[i] = value;
                 }
+
+                for (size_t ax = n; ax-- > 0; ) {
+                    ++index[ax];
+                    mask_offset += mask_stride[ax];
+                    if (index[ax] < m_shape[ax]) {
+                        break;
+                    }
+                    index[ax] = 0;
+                    mask_offset -= mask_stride[ax] * m_shape[ax];
+                }
             }
+
             return result;
         }
 

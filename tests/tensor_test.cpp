@@ -1976,6 +1976,123 @@ TEST(TensorMaskedFill, WorksWithDouble) {
     EXPECT_DOUBLE_EQ(r(0, 1), 0.0);
 }
 
+// --- MaskedFill broadcasting ------------------------------------------------
+
+TEST(TensorMaskedFillBroadcast, LowerRankMaskAppliesToEveryBatch) {
+    Tensor<float> a({2, 3, 4}, 1.0f);
+    Tensor<bool> mask({4}, false);
+    mask(1) = true;
+
+    const Tensor<float> r = a.MaskedFill(mask, -1.0f);
+
+    ASSERT_EQ(r.Shape(), (std::vector<size_t>{2, 3, 4}));
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            EXPECT_FLOAT_EQ(r(i, j, 0), 1.0f);
+            EXPECT_FLOAT_EQ(r(i, j, 1), -1.0f) << "at (" << i << "," << j << ")";
+            EXPECT_FLOAT_EQ(r(i, j, 3), 1.0f);
+        }
+    }
+}
+
+TEST(TensorMaskedFillBroadcast, CausalMaskAppliesAcrossBatchAndHeads) {
+    // The attention case: {S,S} mask over {B,H,S,S} scores.
+    const size_t B = 2, H = 3, S = 4;
+    Tensor<float> scores({B, H, S, S}, 1.0f);
+
+    Tensor<bool> causal({S, S}, false);
+    for (size_t i = 0; i < S; ++i) {
+        for (size_t j = i + 1; j < S; ++j) {
+            causal(i, j) = true;
+        }
+    }
+
+    const Tensor<float> r = scores.MaskedFill(causal, -1.0f);
+
+    ASSERT_EQ(r.Shape(), (std::vector<size_t>{B, H, S, S}));
+    for (size_t b = 0; b < B; ++b) {
+        for (size_t h = 0; h < H; ++h) {
+            for (size_t i = 0; i < S; ++i) {
+                for (size_t j = 0; j < S; ++j) {
+                    const float expected = (j > i) ? -1.0f : 1.0f;
+                    EXPECT_FLOAT_EQ(r(b, h, i, j), expected)
+                        << "b" << b << " h" << h << " (" << i << "," << j << ")";
+                }
+            }
+        }
+    }
+}
+
+TEST(TensorMaskedFillBroadcast, LengthOneAxisBroadcasts) {
+    Tensor<float> a({3, 2}, 5.0f);
+    Tensor<bool> mask({1, 2}, false);
+    mask(0, 1) = true;
+
+    const Tensor<float> r = a.MaskedFill(mask, 0.0f);
+
+    for (size_t i = 0; i < 3; ++i) {
+        EXPECT_FLOAT_EQ(r(i, 0), 5.0f);
+        EXPECT_FLOAT_EQ(r(i, 1), 0.0f) << "row " << i;
+    }
+}
+
+TEST(TensorMaskedFillBroadcast, ColumnMaskBroadcastsAlongRows) {
+    Tensor<float> a({2, 3}, 5.0f);
+    Tensor<bool> mask({2, 1}, false);
+    mask(1, 0) = true;
+
+    const Tensor<float> r = a.MaskedFill(mask, 0.0f);
+
+    for (size_t j = 0; j < 3; ++j) {
+        EXPECT_FLOAT_EQ(r(0, j), 5.0f);
+        EXPECT_FLOAT_EQ(r(1, j), 0.0f);
+    }
+}
+
+TEST(TensorMaskedFillBroadcast, RejectsAMaskThatWouldGrowTheTensor) {
+    Tensor<float> a({2, 3}, 1.0f);
+    Tensor<bool> bigger({4, 2, 3}, false);
+
+    EXPECT_THROW(a.MaskedFill(bigger, 0.0f), std::invalid_argument);
+}
+
+TEST(TensorMaskedFillBroadcast, RejectsAnIncompatibleMask) {
+    Tensor<float> a({2, 3}, 1.0f);
+    Tensor<bool> wrong({2, 4}, false);
+
+    EXPECT_THROW(a.MaskedFill(wrong, 0.0f), std::invalid_argument);
+}
+
+TEST(TensorMaskedFillBroadcast, RejectsAnEmptyMask) {
+    Tensor<float> a({2, 3}, 1.0f);
+    Tensor<bool> empty;
+
+    EXPECT_THROW(a.MaskedFill(empty, 0.0f), std::invalid_argument);
+}
+
+TEST(TensorMaskedFillBroadcast, BroadcastMaskMayBeNonContiguous) {
+    // {3,2} transposed gives a genuinely strided {2,3} mask. A {3,1} source
+    // would not: a length-1 axis leaves the layout contiguous either way.
+    Tensor<bool> source({3, 2}, false);
+    source(1, 1) = true;
+    const Tensor<bool> mask = source.Transpose();   // {2,3}, mask(1,1) true
+    ASSERT_FALSE(mask.IsContiguous());
+
+    Tensor<float> a({4, 2, 3}, 5.0f);
+    const Tensor<float> r = a.MaskedFill(mask, 0.0f);
+
+    ASSERT_EQ(r.Shape(), (std::vector<size_t>{4, 2, 3}));
+    for (size_t b = 0; b < 4; ++b) {
+        for (size_t i = 0; i < 2; ++i) {
+            for (size_t j = 0; j < 3; ++j) {
+                const float expected = (i == 1 && j == 1) ? 0.0f : 5.0f;
+                EXPECT_FLOAT_EQ(r(b, i, j), expected)
+                    << "b" << b << " (" << i << "," << j << ")";
+            }
+        }
+    }
+}
+
 // --- element type -----------------------------------------------------------
 
 TEST(TensorElementType, WorksWithDouble) {

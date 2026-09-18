@@ -5,6 +5,7 @@
 #include "Linear.h"
 #include "Activation.h"
 
+
 namespace nn {
 
     using activation::Softmax;
@@ -14,7 +15,7 @@ namespace nn {
         Attention(size_t d_model, size_t num_heads, bool use_bias = true) :
             d_model(d_model),
             num_heads(num_heads),
-            head_dim(d_model / num_heads),
+            head_dim(ValidatedHeadDim(d_model, num_heads)),
             scale(std::sqrt(static_cast<T>(head_dim))),
             query(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
             key(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
@@ -25,6 +26,16 @@ namespace nn {
             this->RegisterSubmodule("key", key);
             this->RegisterSubmodule("value", value);
             this->RegisterSubmodule("output_proj", output_proj);
+        }
+
+        static size_t ValidatedHeadDim(size_t d_model, size_t num_heads) {
+            if (num_heads == 0) {
+                throw std::invalid_argument("Attention: num_heads must be greater than zero.");
+            }
+            if (d_model % num_heads != 0) {
+                throw std::invalid_argument("Attention: d_model must be divisible by num_heads.");
+            }
+            return d_model / num_heads;
         }
 
         Tensor<T> SplitHeads(const Tensor<T>& x) {
@@ -38,16 +49,49 @@ namespace nn {
         }
 
         Tensor<T> Forward(const Tensor<T>& input) override {
+            return Forward(input, Tensor<bool>(), false);
+        }
+
+        Tensor<T> Forward(const Tensor<T>& input, const Tensor<bool>& mask){
+            return Forward(input, mask, false);
+        }
+
+        Tensor<T> Forward(const Tensor<T>& input, const Tensor<bool>& mask, bool causal) {
             Tensor<T> Q = SplitHeads((*query)(input));
             Tensor<T> K = SplitHeads((*key)(input));
             Tensor<T> V = SplitHeads((*value)(input));
 
             Tensor<T> scores = MatMul(Q, K.Transpose(-2, -1)) / scale;
+
+            if(causal){
+                const size_t seq_length = scores.Shape()[scores.Rank() - 1];
+                Tensor<bool> causal_mask({seq_length, seq_length}, false);
+                for (size_t i = 0; i < seq_length; ++i) {
+                    for (size_t j = 0; j <= i; ++j) {
+                        causal_mask(i, j) = true;
+                    }
+                }
+                scores = scores.MaskedFill(causal_mask, -std::numeric_limits<T>::infinity());
+            }
+
+            if(mask.Size() > 0){
+                scores = scores.MaskedFill(mask, -std::numeric_limits<T>::infinity());
+            }
+
             Tensor<T> attention_weights = Softmax<T>(-1)(scores);
             Tensor<T> context = MatMul(attention_weights, V);
             Tensor<T> output = (*output_proj)(MergeHeads(context));
 
+            if(mask.Size() > 0){
+                output = output.MaskedFill(mask, T(0));
+            }
+
             return output;
+        }
+
+        template <typename... Args>
+        Tensor<T> operator()(const Tensor<T>& input, Args... args) {
+            return Forward(input, args...);
         }
 
         std::shared_ptr<Linear<T>> query;
