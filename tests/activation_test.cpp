@@ -315,13 +315,116 @@ TEST(SoftmaxForward, SingleClassCollapsesToOne) {
     }
 }
 
-TEST(SoftmaxForward, RejectsNonMatrixInput) {
+TEST(SoftmaxForward, DefaultsToTheLastAxis) {
     Softmax<float> softmax;
-    Tensor<float> vec({4}, 1.0f);
-    Tensor<float> cube({2, 2, 2}, 1.0f);
+    EXPECT_EQ(softmax.Axis(), -1);
+}
 
-    EXPECT_THROW(softmax.Forward(vec), std::invalid_argument);
-    EXPECT_THROW(softmax.Forward(cube), std::invalid_argument);
+TEST(SoftmaxForward, HandlesRankOneInput) {
+    Softmax<float> softmax;
+    Tensor<float> in({3});
+    in(0) = 1.0f; in(1) = 2.0f; in(2) = 3.0f;
+
+    const Tensor<float> out = softmax.Forward(in);
+
+    ASSERT_EQ(out.Shape(), (std::vector<size_t>{3}));
+    EXPECT_NEAR(out(0), 0.0900306f, kTol);
+    EXPECT_NEAR(out(2), 0.6652409f, kTol);
+    EXPECT_NEAR(out(0) + out(1) + out(2), 1.0f, kTol);
+}
+
+TEST(SoftmaxForward, HandlesRankThreeOverTheLastAxis) {
+    Softmax<float> softmax;
+    Tensor<float> in({2, 3, 4});
+    float next = 0.0f;
+    for (size_t h = 0; h < 2; ++h)
+        for (size_t i = 0; i < 3; ++i)
+            for (size_t j = 0; j < 4; ++j) in(h, i, j) = next++ * 0.1f;
+
+    const Tensor<float> out = softmax.Forward(in);
+
+    ASSERT_EQ(out.Shape(), (std::vector<size_t>{2, 3, 4}));
+    for (size_t h = 0; h < 2; ++h) {
+        for (size_t i = 0; i < 3; ++i) {
+            float sum = 0.0f;
+            for (size_t j = 0; j < 4; ++j) sum += out(h, i, j);
+            EXPECT_NEAR(sum, 1.0f, kTol) << "at (" << h << ", " << i << ")";
+        }
+    }
+}
+
+TEST(SoftmaxForward, AxisZeroNormalisesDownColumns) {
+    Softmax<float> softmax(0);
+    Tensor<float> in({2, 3});
+    in(0, 0) = 1.0f; in(0, 1) = 2.0f; in(0, 2) = 3.0f;
+    in(1, 0) = 1.0f; in(1, 1) = 2.0f; in(1, 2) = 3.0f;
+
+    const Tensor<float> out = softmax.Forward(in);
+
+    for (size_t j = 0; j < 3; ++j) {
+        EXPECT_NEAR(out(0, j) + out(1, j), 1.0f, kTol) << "column " << j;
+        EXPECT_NEAR(out(0, j), 0.5f, kTol) << "identical rows split evenly";
+    }
+}
+
+TEST(SoftmaxForward, NegativeAndPositiveAxesAgree) {
+    Tensor<float> in({2, 3, 4});
+    float next = 0.0f;
+    for (size_t h = 0; h < 2; ++h)
+        for (size_t i = 0; i < 3; ++i)
+            for (size_t j = 0; j < 4; ++j) in(h, i, j) = next++ * 0.3f;
+
+    const Tensor<float> negative = Softmax<float>(-1).Forward(in);
+    const Tensor<float> positive = Softmax<float>(2).Forward(in);
+
+    for (size_t h = 0; h < 2; ++h)
+        for (size_t i = 0; i < 3; ++i)
+            for (size_t j = 0; j < 4; ++j)
+                EXPECT_FLOAT_EQ(negative(h, i, j), positive(h, i, j));
+}
+
+TEST(SoftmaxForward, MiddleAxisNormalisesAcrossThatAxisOnly) {
+    Softmax<float> softmax(1);
+    Tensor<float> in({2, 3, 2}, 0.0f);
+
+    const Tensor<float> out = softmax.Forward(in);
+
+    // Equal logits along axis 1 (length 3) give 1/3 each.
+    for (size_t h = 0; h < 2; ++h) {
+        for (size_t j = 0; j < 2; ++j) {
+            float sum = 0.0f;
+            for (size_t i = 0; i < 3; ++i) sum += out(h, i, j);
+            EXPECT_NEAR(sum, 1.0f, kTol);
+            EXPECT_NEAR(out(h, 0, j), 1.0f / 3.0f, kTol);
+        }
+    }
+}
+
+TEST(SoftmaxForward, AttentionScoreShapeNormalisesPerQuery) {
+    // {heads, queries, keys}: each query's distribution over keys sums to 1.
+    Softmax<float> softmax(-1);
+    Tensor<float> scores({2, 3, 3});
+    float next = 1.0f;
+    for (size_t h = 0; h < 2; ++h)
+        for (size_t q = 0; q < 3; ++q)
+            for (size_t k = 0; k < 3; ++k) scores(h, q, k) = next++ * 0.25f;
+
+    const Tensor<float> weights = softmax.Forward(scores);
+
+    for (size_t h = 0; h < 2; ++h) {
+        for (size_t q = 0; q < 3; ++q) {
+            float sum = 0.0f;
+            for (size_t k = 0; k < 3; ++k) sum += weights(h, q, k);
+            EXPECT_NEAR(sum, 1.0f, kTol) << "head " << h << " query " << q;
+        }
+    }
+}
+
+TEST(SoftmaxForward, RejectsAnOutOfRangeAxis) {
+    Tensor<float> in({2, 3}, 1.0f);
+
+    EXPECT_THROW(Softmax<float>(2).Forward(in), std::invalid_argument);
+    EXPECT_THROW(Softmax<float>(-3).Forward(in), std::invalid_argument);
 }
 
 TEST(SoftmaxForward, DoesNotMutateOrAliasTheInput) {

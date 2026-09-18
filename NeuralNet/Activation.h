@@ -59,30 +59,54 @@ namespace activation {
     template <typename T>
     class Softmax : public Module<T> {
     public:
+        explicit Softmax(long long axis = -1) : m_axis(axis) {}
+
         Tensor<T> Forward(const Tensor<T>& input) override {
-            if (input.Rank() != 2) {
-                throw std::invalid_argument("Softmax expects a rank-2 tensor (batch_size, num_classes).");
+            const size_t axis = math::detail::NormalizeAxis(m_axis, input.Rank());
+
+            // Clone() compacts, so the flat decomposition below holds for views.
+            Tensor<T> output = input.Clone();
+            const std::vector<size_t>& shape = output.Shape();
+
+            size_t outer = 1;
+            for (size_t i = 0; i < axis; ++i) {
+                outer *= shape[i];
+            }
+            const size_t count = shape[axis];
+            size_t inner = 1;
+            for (size_t i = axis + 1; i < shape.size(); ++i) {
+                inner *= shape[i];
             }
 
-            Tensor<T> output = input.Clone();
-            const size_t batch_size = input.Shape()[0];
-            const size_t num_classes = input.Shape()[1];
+            T* data = output.Data();
 
-            for (size_t i = 0; i < batch_size; ++i) {
-                T max_val = *std::max_element(output.Data() + i * num_classes, output.Data() + (i + 1) * num_classes);
-                T sum_exp = T(0);
+            for (size_t o = 0; o < outer; ++o) {
+                for (size_t i = 0; i < inner; ++i) {
+                    T* base = data + o * count * inner + i;
 
-                for (size_t j = 0; j < num_classes; ++j) {
-                    output(i, j) = std::exp(output(i, j) - max_val);
-                    sum_exp += output(i, j);
-                }
+                    T max_value = base[0];
+                    for (size_t a = 1; a < count; ++a) {
+                        max_value = std::max(max_value, base[a * inner]);
+                    }
 
-                for (size_t j = 0; j < num_classes; ++j) {
-                    output(i, j) /= sum_exp;
+                    T sum = T(0);
+                    for (size_t a = 0; a < count; ++a) {
+                        base[a * inner] = std::exp(base[a * inner] - max_value);
+                        sum += base[a * inner];
+                    }
+
+                    for (size_t a = 0; a < count; ++a) {
+                        base[a * inner] /= sum;
+                    }
                 }
             }
 
             return output;
         }
+
+        long long Axis() const noexcept { return m_axis; }
+
+    private:
+        long long m_axis;
     };
 }
