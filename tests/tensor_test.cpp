@@ -2,6 +2,7 @@
 
 #include <Math/Tensor.h>
 
+#include <limits>
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
@@ -1818,6 +1819,161 @@ TEST(TensorTransposeNegative, FeedsBatchedMatMulDirectly) {
             EXPECT_FLOAT_EQ(scores(h, i, i), expected);
         }
     }
+}
+
+// --- MaskedFill -------------------------------------------------------------
+
+TEST(TensorMaskedFill, ReplacesOnlyMaskedPositions) {
+    Tensor<float> a({2, 3}, 5.0f);
+    Tensor<bool> mask({2, 3}, false);
+    mask(0, 1) = true;
+    mask(1, 2) = true;
+
+    const Tensor<float> r = a.MaskedFill(mask, -1.0f);
+
+    EXPECT_FLOAT_EQ(r(0, 0), 5.0f);
+    EXPECT_FLOAT_EQ(r(0, 1), -1.0f);
+    EXPECT_FLOAT_EQ(r(0, 2), 5.0f);
+    EXPECT_FLOAT_EQ(r(1, 0), 5.0f);
+    EXPECT_FLOAT_EQ(r(1, 1), 5.0f);
+    EXPECT_FLOAT_EQ(r(1, 2), -1.0f);
+}
+
+TEST(TensorMaskedFill, AnAllFalseMaskChangesNothing) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+    Tensor<bool> mask({2, 3}, false);
+
+    const Tensor<float> r = a.MaskedFill(mask, -99.0f);
+
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            EXPECT_FLOAT_EQ(r(i, j), a(i, j));
+        }
+    }
+}
+
+TEST(TensorMaskedFill, AnAllTrueMaskReplacesEverything) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+    Tensor<bool> mask({2, 3}, true);
+
+    const Tensor<float> r = a.MaskedFill(mask, 7.0f);
+
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            EXPECT_FLOAT_EQ(r(i, j), 7.0f);
+        }
+    }
+}
+
+TEST(TensorMaskedFill, PreservesShape) {
+    Tensor<float> a({2, 3, 4}, 1.0f);
+    Tensor<bool> mask({2, 3, 4}, false);
+
+    EXPECT_EQ(a.MaskedFill(mask, 0.0f).Shape(), (std::vector<size_t>{2, 3, 4}));
+}
+
+TEST(TensorMaskedFill, DoesNotMutateOrAliasTheSource) {
+    Tensor<float> a({2, 3}, 5.0f);
+    Tensor<bool> mask({2, 3}, true);
+
+    const Tensor<float> r = a.MaskedFill(mask, -1.0f);
+
+    EXPECT_FLOAT_EQ(a(0, 0), 5.0f) << "source must be untouched";
+    EXPECT_FALSE(r.SharesStorage(a));
+}
+
+TEST(TensorMaskedFill, RejectsAMismatchedMaskShape) {
+    Tensor<float> a({2, 3}, 1.0f);
+    Tensor<bool> wrong({3, 2}, false);
+    Tensor<bool> smaller({2}, false);
+
+    EXPECT_THROW(a.MaskedFill(wrong, 0.0f), std::invalid_argument);
+    EXPECT_THROW(a.MaskedFill(smaller, 0.0f), std::invalid_argument);
+}
+
+TEST(TensorMaskedFill, AcceptsNegativeInfinity) {
+    Tensor<float> a({1, 3}, 1.0f);
+    Tensor<bool> mask({1, 3}, false);
+    mask(0, 2) = true;
+
+    const Tensor<float> r = a.MaskedFill(mask, -std::numeric_limits<float>::infinity());
+
+    EXPECT_FLOAT_EQ(r(0, 0), 1.0f);
+    EXPECT_TRUE(std::isinf(r(0, 2)));
+    EXPECT_LT(r(0, 2), 0.0f);
+}
+
+TEST(TensorMaskedFill, BuildsACausalMask) {
+    // The attention use: block every position from attending to later ones.
+    const size_t seq = 4;
+    Tensor<float> scores({seq, seq}, 1.0f);
+    Tensor<bool> mask({seq, seq}, false);
+    for (size_t i = 0; i < seq; ++i) {
+        for (size_t j = i + 1; j < seq; ++j) {
+            mask(i, j) = true;
+        }
+    }
+
+    const Tensor<float> r = scores.MaskedFill(mask, -std::numeric_limits<float>::infinity());
+
+    for (size_t i = 0; i < seq; ++i) {
+        for (size_t j = 0; j < seq; ++j) {
+            if (j <= i) {
+                EXPECT_FLOAT_EQ(r(i, j), 1.0f) << "(" << i << "," << j << ") should be visible";
+            } else {
+                EXPECT_TRUE(std::isinf(r(i, j))) << "(" << i << "," << j << ") should be masked";
+            }
+        }
+    }
+}
+
+TEST(TensorMaskedFill, HandlesANonContiguousSource) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);                      // rows (1 2 3), (4 5 6)
+
+    const Tensor<float> view = a.Transpose();   // {3,2}: (1 4), (2 5), (3 6)
+    ASSERT_FALSE(view.IsContiguous());
+
+    Tensor<bool> mask({3, 2}, false);
+    mask(0, 0) = true;                // should hit the value 1
+    mask(2, 1) = true;                // should hit the value 6
+
+    const Tensor<float> r = view.MaskedFill(mask, -1.0f);
+
+    EXPECT_FLOAT_EQ(r(0, 0), -1.0f);
+    EXPECT_FLOAT_EQ(r(0, 1), 4.0f);
+    EXPECT_FLOAT_EQ(r(1, 0), 2.0f);
+    EXPECT_FLOAT_EQ(r(1, 1), 5.0f);
+    EXPECT_FLOAT_EQ(r(2, 0), 3.0f);
+    EXPECT_FLOAT_EQ(r(2, 1), -1.0f);
+}
+
+TEST(TensorMaskedFill, HandlesANonContiguousMask) {
+    Tensor<float> a({2, 3}, 5.0f);
+
+    Tensor<bool> source({3, 2}, false);
+    source(1, 0) = true;              // transposes to (0,1)
+    const Tensor<bool> mask = source.Transpose();   // {2,3}
+    ASSERT_FALSE(mask.IsContiguous());
+
+    const Tensor<float> r = a.MaskedFill(mask, -1.0f);
+
+    EXPECT_FLOAT_EQ(r(0, 1), -1.0f) << "the one true position";
+    EXPECT_FLOAT_EQ(r(0, 0), 5.0f);
+    EXPECT_FLOAT_EQ(r(1, 2), 5.0f);
+}
+
+TEST(TensorMaskedFill, WorksWithDouble) {
+    Tensor<double> a({1, 2}, 2.5);
+    Tensor<bool> mask({1, 2}, false);
+    mask(0, 1) = true;
+
+    const Tensor<double> r = a.MaskedFill(mask, 0.0);
+
+    EXPECT_DOUBLE_EQ(r(0, 0), 2.5);
+    EXPECT_DOUBLE_EQ(r(0, 1), 0.0);
 }
 
 // --- element type -----------------------------------------------------------

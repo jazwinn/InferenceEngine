@@ -87,7 +87,7 @@ namespace math {
             }
             m_size = detail::ElementCount(m_shape);
             m_stride = detail::RowMajorStrides(m_shape);
-            m_data = std::make_shared<std::vector<T>>(m_size, initial_value);
+            m_data = std::make_shared<T[]>(m_size, initial_value);
         }
 
         const std::vector<size_t>& Shape() const noexcept { return m_shape; }
@@ -107,8 +107,8 @@ namespace math {
             return true;
         }
 
-        T* Data() noexcept { return m_data ? m_data->data() + m_offset : nullptr; }
-        const T* Data() const noexcept { return m_data ? m_data->data() + m_offset : nullptr; }
+        T* Data() noexcept { return m_data ? m_data.get() + m_offset : nullptr; }
+        const T* Data() const noexcept { return m_data ? m_data.get() + m_offset : nullptr; }
 
         bool SharesStorage(const Tensor<T>& other) const noexcept {
             return m_data && m_data == other.m_data;
@@ -130,21 +130,21 @@ namespace math {
         template <typename... Idx>
         requires (std::is_convertible_v<Idx, size_t> && ...)
         T& operator()(Idx... indices) {
-            return (*m_data)[Flatten(indices...)];
+            return m_data[Flatten(indices...)];
         }
 
         template <typename... Idx>
         requires (std::is_convertible_v<Idx, size_t> && ...)
         const T& operator()(Idx... indices) const {
-            return (*m_data)[Flatten(indices...)];
+            return m_data[Flatten(indices...)];
         }
 
         T& operator()(std::span<const size_t> indices) {
-            return (*m_data)[Flatten(indices)];
+            return m_data[Flatten(indices)];
         }
 
         const T& operator()(std::span<const size_t> indices) const {
-            return (*m_data)[Flatten(indices)];
+            return m_data[Flatten(indices)];
         }
 
         Tensor<T> Clone() const {
@@ -152,7 +152,7 @@ namespace math {
                 return Tensor<T>();
             }
             Tensor<T> result(m_shape);
-            T* out = result.m_data->data();
+            T* out = result.m_data.get();
             size_t i = 0;
             ForEach([&out, &i](const T& element) { out[i++] = element; });
             return result;
@@ -383,8 +383,6 @@ namespace math {
 
             Tensor<T> result(new_shape);
 
-            // Output strides mapped onto this tensor's axes; the reduced axis
-            // gets 0 so every element of a group accumulates into one slot.
             const std::vector<size_t> result_stride = detail::RowMajorStrides(new_shape);
             std::vector<size_t> out_stride(n, 0);
             for (size_t i = 0, k = 0; i < n; ++i) {
@@ -426,6 +424,23 @@ namespace math {
             return result;
         }
 
+        Tensor<T> MaskedFill(const Tensor<bool>& mask, const T& value) const {
+            if (mask.Shape() != m_shape) {
+                throw std::invalid_argument("Mask shape must match tensor shape for MaskedFill.");
+            }
+
+            Tensor<T> result = Clone();
+            const Tensor<bool> flat_mask = mask.Contiguous();
+            const bool* msk = flat_mask.Data();
+            T* out = result.Data();
+            for (size_t i = 0; i < m_size; ++i) {
+                if (msk[i]) {
+                    out[i] = value;
+                }
+            }
+            return result;
+        }
+
     private:
         template <typename... Idx>
         size_t Flatten(Idx... indices) const {
@@ -458,7 +473,7 @@ namespace math {
             size_t offset = m_offset;
 
             for (size_t i = 0; i < m_size; ++i) {
-                f((*m_data)[offset]);
+                f(m_data[offset]);
 
                 for (size_t axis = n; axis-- > 0; ) {
                     ++index[axis];
@@ -525,7 +540,7 @@ namespace math {
             size_t other_offset = other.m_offset;
 
             for (size_t i = 0; i < m_size; ++i) {
-                op((*m_data)[self_offset], (*other.m_data)[other_offset]);
+                op(m_data[self_offset], other.m_data[other_offset]);
 
                 for (size_t axis = n; axis-- > 0; ) {
                     ++index[axis];
@@ -544,7 +559,7 @@ namespace math {
 
         std::vector<size_t> m_shape;
         std::vector<size_t> m_stride;
-        std::shared_ptr<std::vector<T>> m_data;
+        std::shared_ptr<T[]> m_data;
         size_t m_offset = 0;
         size_t m_size = 0;
     };
