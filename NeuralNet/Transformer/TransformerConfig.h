@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <stdexcept>
 
 namespace transformer
 {
@@ -44,6 +47,30 @@ namespace transformer
         size_t HeadDim() const { return head_dim ? head_dim : d_model / num_heads; }
         void   Validate() const;   // throws on inconsistent values
     };
+
+    inline void TransformerConfig::Validate() const
+    {
+        if (vocab_size == 0 || d_model == 0 || num_layers == 0 || num_heads == 0 || ffn_dim == 0 || max_seq_len == 0)
+        {
+            throw std::invalid_argument("TransformerConfig: vocab_size, d_model, num_layers, num_heads, ffn_dim and max_seq_len must all be greater than zero.");
+        }
+        if (head_dim == 0 && d_model % num_heads != 0)
+        {
+            throw std::invalid_argument("TransformerConfig: d_model must be divisible by num_heads.");
+        }
+        if (num_heads % KVHeads() != 0)
+        {
+            throw std::invalid_argument("TransformerConfig: num_heads must be divisible by num_kv_heads.");
+        }
+        if (position == PositionEncoding::Rotary && rope_theta <= 0.0f)
+        {
+            throw std::invalid_argument("TransformerConfig: rope_theta must be positive for rotary positions.");
+        }
+        if (norm_eps <= 0.0f)
+        {
+            throw std::invalid_argument("TransformerConfig: norm_eps must be positive.");
+        }
+    }
 
 
 }

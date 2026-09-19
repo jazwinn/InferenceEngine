@@ -9,7 +9,7 @@ target_link_libraries(math_tests PRIVATE
 )
 gtest_discover_tests(math_tests)
 
-add_executable(nn_tests nn_test.cpp activation_test.cpp layernorm_test.cpp rmsnorm_test.cpp multiheadattention_test.cpp transformer_test.cpp sequential_test.cpp embedding_test.cpp)
+add_executable(nn_tests nn_test.cpp activation_test.cpp layernorm_test.cpp rmsnorm_test.cpp multiheadattention_test.cpp transformer_test.cpp sequential_test.cpp embedding_test.cpp gpt2_test.cpp)
 target_link_libraries(nn_tests PRIVATE
     InferenceEngine::NeuralNet
     GTest::gtest
@@ -17,7 +17,7 @@ target_link_libraries(nn_tests PRIVATE
 )
 gtest_discover_tests(nn_tests)
 
-add_executable(serialize_tests serialize_test.cpp)
+add_executable(serialize_tests serialize_test.cpp safetensors_test.cpp)
 target_link_libraries(serialize_tests PRIVATE
     InferenceEngine::Serialize
     GTest::gtest

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <Models/ModelConfigs.h>
 #include <NeuralNet/Transformer/Transformer.h>
 
 #include <algorithm>
@@ -89,8 +90,8 @@ TransformerConfig SmallConfig(size_t layers = 2) {
 
 // --- TransformerConfig ------------------------------------------------------
 
-TEST(TransformerConfig, DefaultsDescribeGPT2Small) {
-    const TransformerConfig c;
+TEST(TransformerConfig, GPT2SmallPreset) {
+    const TransformerConfig c = models::gpt2::Small();
 
     EXPECT_EQ(c.vocab_size, 50257u);
     EXPECT_EQ(c.max_seq_len, 1024u);
@@ -101,6 +102,32 @@ TEST(TransformerConfig, DefaultsDescribeGPT2Small) {
     EXPECT_FLOAT_EQ(c.norm_eps, 1e-5f);
     EXPECT_EQ(c.eos_token_id, 50256);
     EXPECT_EQ(c.d_model % c.num_heads, 0u);
+    EXPECT_NO_THROW(c.Validate());
+}
+
+TEST(TransformerConfig, DefaultsAreNeutralAndFailValidation) {
+    const TransformerConfig c;
+
+    EXPECT_EQ(c.vocab_size, 0u);
+    EXPECT_EQ(c.d_model, 0u);
+    EXPECT_THROW(c.Validate(), std::invalid_argument);
+}
+
+TEST(TransformerConfig, ValidateRejectsHeadsThatDoNotGroup) {
+    TransformerConfig c = models::gpt2::Small();
+    c.num_kv_heads = 5;   // 12 query heads cannot split over 5 KV heads
+    EXPECT_THROW(c.Validate(), std::invalid_argument);
+}
+
+TEST(TransformerConfig, DerivedHeadCounts) {
+    TransformerConfig c = models::gpt2::Small();
+    EXPECT_EQ(c.KVHeads(), 12u);
+    EXPECT_EQ(c.HeadDim(), 64u);
+
+    c.num_kv_heads = 4;
+    c.head_dim = 32;
+    EXPECT_EQ(c.KVHeads(), 4u);
+    EXPECT_EQ(c.HeadDim(), 32u);
 }
 
 // --- TransformerBlock: construction -----------------------------------------
@@ -400,7 +427,7 @@ TEST(TransformerParameters, NamesAreUnique) {
 TEST(TransformerParameters, GPT2SmallHasTheExpectedSize) {
     // GPT-2 small is 124,439,808 parameters; without the token (50257 x 768)
     // and position (1024 x 768) embeddings that leaves 85,056,000.
-    Transformer<float> model{TransformerConfig{}};
+    Transformer<float> model{models::gpt2::Small()};
 
     EXPECT_EQ(model.blocks.size(), 12u);
     EXPECT_EQ(model.NamedParameters().size(), 12u * 16u + 2u);
