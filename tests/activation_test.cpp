@@ -3,6 +3,7 @@
 #include <NeuralNet/Activation.h>
 #include <NeuralNet/Module.h>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <stdexcept>
@@ -208,6 +209,135 @@ TEST(GELUForward, PreservesShapeAndLeavesTheInputUntouched) {
     EXPECT_EQ(out.Shape(), (std::vector<size_t>{2, 3, 4}));
     EXPECT_NEAR(out(1, 2, 3), 0.8411920f, kTol);
     EXPECT_FLOAT_EQ(in(1, 2, 3), 1.0f);
+}
+
+TEST(GELUForward, MoreReferenceValues) {
+    GELU<float> gelu;
+    const Tensor<float> in = RowVector({-2.0f, -0.5f, 2.0f, 5.0f});
+
+    const Tensor<float> out = gelu.Forward(in);
+
+    // torch.nn.functional.gelu(x, approximate="tanh")
+    EXPECT_NEAR(out(0, 0), -0.0454023f, kTol);
+    EXPECT_NEAR(out(0, 1), -0.1542860f, kTol);
+    EXPECT_NEAR(out(0, 2), 1.9545977f, kTol);
+    EXPECT_NEAR(out(0, 3), 5.0000000f, kTol);
+}
+
+TEST(GELUForward, UsesTheTanhApproximationNotTheExactErfForm) {
+    // GPT-2 was trained with the tanh form; the exact erf form gives
+    // 0.8413447 at x = 1, which is 1.5e-4 away.
+    GELU<float> gelu;
+    const Tensor<float> out = gelu.Forward(RowVector({1.0f}));
+
+    const float exact = 0.5f * (1.0f + std::erf(1.0f / std::sqrt(2.0f)));
+    EXPECT_GT(std::fabs(out(0, 0) - exact), 1e-4f);
+    EXPECT_NEAR(out(0, 0), 0.8411920f, kTol);
+}
+
+TEST(GELUForward, DifferenceWithItsMirrorIsTheInput) {
+    // 0.5x(1 + tanh(u)) - 0.5(-x)(1 - tanh(u)) = x, for any x.
+    GELU<float> gelu;
+    const std::vector<float> xs = {-4.0f, -1.3f, -0.2f, 0.0f, 0.7f, 2.5f, 6.0f};
+    Tensor<float> pos({1, xs.size()});
+    Tensor<float> neg({1, xs.size()});
+    for (size_t j = 0; j < xs.size(); ++j) {
+        pos(0, j) = xs[j];
+        neg(0, j) = -xs[j];
+    }
+
+    const Tensor<float> a = gelu.Forward(pos);
+    const Tensor<float> b = gelu.Forward(neg);
+
+    for (size_t j = 0; j < xs.size(); ++j)
+        EXPECT_NEAR(a(0, j) - b(0, j), xs[j], kTol) << "x = " << xs[j];
+}
+
+TEST(GELUForward, LiesBetweenZeroAndTheInput) {
+    GELU<float> gelu;
+    Tensor<float> in({1, 81});
+    for (size_t j = 0; j < 81; ++j) in(0, j) = -4.0f + 0.1f * static_cast<float>(j);
+
+    const Tensor<float> out = gelu.Forward(in);
+
+    for (size_t j = 0; j < 81; ++j) {
+        const float x = in(0, j);
+        EXPECT_LE(out(0, j), std::max(x, 0.0f) + kTol) << "x = " << x;
+        EXPECT_GE(out(0, j), std::min(x, 0.0f) - kTol) << "x = " << x;
+    }
+}
+
+TEST(GELUForward, NeverDipsBelowItsMinimum) {
+    // The tanh form bottoms out at about -0.170 near x = -0.75.
+    GELU<float> gelu;
+    Tensor<float> in({1, 201});
+    for (size_t j = 0; j < 201; ++j) in(0, j) = -5.0f + 0.05f * static_cast<float>(j);
+
+    const Tensor<float> out = gelu.Forward(in);
+
+    float lowest = out(0, 0);
+    for (size_t j = 1; j < 201; ++j) lowest = std::min(lowest, out(0, j));
+    EXPECT_NEAR(lowest, -0.170f, 1e-3f);
+}
+
+TEST(GELUForward, IsIncreasingAboveItsMinimum) {
+    GELU<float> gelu;
+    Tensor<float> in({1, 60});
+    for (size_t j = 0; j < 60; ++j) in(0, j) = -0.7f + 0.1f * static_cast<float>(j);
+
+    const Tensor<float> out = gelu.Forward(in);
+
+    for (size_t j = 1; j < 60; ++j)
+        EXPECT_GT(out(0, j), out(0, j - 1)) << "between x = " << in(0, j - 1) << " and " << in(0, j);
+}
+
+TEST(GELUForward, SaturatesWithoutNaN) {
+    GELU<float> gelu;
+    const Tensor<float> in = RowVector({-100.0f, -20.0f, 20.0f, 100.0f});
+
+    const Tensor<float> out = gelu.Forward(in);
+
+    for (size_t j = 0; j < 4; ++j) ASSERT_FALSE(std::isnan(out(0, j))) << "at " << j;
+    EXPECT_NEAR(out(0, 0), 0.0f, kTol);
+    EXPECT_NEAR(out(0, 1), 0.0f, kTol);
+    EXPECT_FLOAT_EQ(out(0, 2), 20.0f);
+    EXPECT_FLOAT_EQ(out(0, 3), 100.0f);
+}
+
+TEST(GELUForward, HandlesANonContiguousInput) {
+    GELU<float> gelu;
+    Tensor<float> source({2, 3});
+    source(0, 0) = -1.0f; source(0, 1) = 0.5f;  source(0, 2) = 3.0f;
+    source(1, 0) = 1.0f;  source(1, 1) = -3.0f; source(1, 2) = 0.0f;
+
+    const Tensor<float> view = source.Transpose();
+    ASSERT_FALSE(view.IsContiguous());
+
+    const Tensor<float> out = gelu.Forward(view);
+    const Tensor<float> expected = gelu.Forward(view.Contiguous());
+
+    ASSERT_EQ(out.Shape(), (std::vector<size_t>{3, 2}));
+    for (size_t i = 0; i < 3; ++i)
+        for (size_t j = 0; j < 2; ++j)
+            EXPECT_FLOAT_EQ(out(i, j), expected(i, j)) << "at (" << i << ", " << j << ")";
+    EXPECT_NEAR(out(0, 0), -0.1588080f, kTol);   // source(0, 0) = -1
+    EXPECT_NEAR(out(2, 0), 2.9963626f, kTol);    // source(0, 2) = 3
+}
+
+TEST(GELUForward, WorksWithDouble) {
+    GELU<double> gelu;
+    Tensor<double> in({1, 2});
+    in(0, 0) = 1.0;
+    in(0, 1) = -1.0;
+
+    const Tensor<double> out = gelu.Forward(in);
+
+    EXPECT_NEAR(out(0, 0), 0.8411919906082768, 1e-12);
+    EXPECT_NEAR(out(0, 1), -0.1588080093917232, 1e-12);
+}
+
+TEST(GELUModule, HasNoParameters) {
+    EXPECT_TRUE(GELU<float>().Parameters().empty());
 }
 
 // --- Softmax ----------------------------------------------------------------

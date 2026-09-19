@@ -14,6 +14,8 @@ namespace nn{
     template <typename T>
     class Module{
     public:
+        using value_type = T;
+
         virtual ~Module() = default;
 
         void RegisterParameter(const std::string& name, std::shared_ptr<Tensor<T>> parameter){

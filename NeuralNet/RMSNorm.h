@@ -5,7 +5,7 @@
 
 namespace nn {
 
-    template <typename T>
+    template <typename T = float>
     class RMSNorm : public Module<T> {
     public:
         RMSNorm(size_t size, T epsilon = static_cast<T>(1e-8)) :

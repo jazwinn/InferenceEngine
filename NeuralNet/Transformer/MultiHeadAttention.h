@@ -17,7 +17,7 @@ namespace transformer
     using namespace activation;
     using namespace nn;
 
-    template <typename T>
+    template <typename T = float>
     class MultiHeadAttention : public nn::Module<T>
     {
     public:

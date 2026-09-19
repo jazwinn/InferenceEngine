@@ -7,7 +7,7 @@
 
 namespace nn{
 
-    template <typename T>
+    template <typename T = float>
     class Linear : public Module<T>{
     public:
         Linear(size_t input_size, size_t output_size, bool use_bias = true) :

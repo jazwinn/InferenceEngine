@@ -11,7 +11,7 @@ namespace activation {
   using math::Tensor;
   using nn::Module;
 
-  template <typename T> 
+  template <typename T = float>
   class ReLU : public Module<T> {
   public:
     Tensor<T> Forward(const Tensor<T> &input) {
@@ -27,7 +27,7 @@ namespace activation {
     }
   };
 
-  template <typename T> 
+  template <typename T = float>
   class GELU : public Module<T> {
   public:
     Tensor<T> Forward(const Tensor<T> &input) {
@@ -45,7 +45,7 @@ namespace activation {
     }
   };
 
-  template <typename T> 
+  template <typename T = float>
   class Sigmoid : public Module<T> {
   public:
     Tensor<T> Forward(const Tensor<T> &input) {
@@ -58,7 +58,7 @@ namespace activation {
     }
   };
 
-  template <typename T> 
+  template <typename T = float>
   class Tanh : public Module<T> {
   public:
     Tensor<T> Forward(const Tensor<T> &input) {
@@ -71,7 +71,7 @@ namespace activation {
     }
   };
 
-  template <typename T> 
+  template <typename T = float>
   class Softmax : public Module<T> {
   public:
     explicit Softmax(long long axis = -1) : m_axis(axis) {}

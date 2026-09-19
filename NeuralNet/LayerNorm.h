@@ -11,7 +11,7 @@
 
 namespace nn{
 
-    template <typename T>
+    template <typename T = float>
     class LayerNorm : public Module<T>{
     public:
         explicit LayerNorm(std::vector<size_t> normalized_shape, T epsilon = static_cast<T>(1e-5)) :
