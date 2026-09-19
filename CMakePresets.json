@@ -27,46 +27,10 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-ninja",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_BUILD_TYPE": "Debug"
       },
       "environment": {
         "VCPKG_ROOT": "C:/vcpkg"
-      }
-    },
-    {
-      "name": "clang",
-      "displayName": "Clang + Ninja (single config, Debug)",
-      "description": "Uses LLVM installed at C:/Program Files/LLVM (winget install LLVM.LLVM).",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-clang",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang++.exe",
-        "CMAKE_RC_COMPILER": "C:/Program Files/LLVM/bin/llvm-rc.exe",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      },
-      "environment": {
-        "VCPKG_ROOT": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/vcpkg",
-        "PATH": "C:/Program Files/LLVM/bin;$penv{PATH}"
-      }
-    },
-    {
-      "name": "clang-cl",
-      "displayName": "clang-cl + Ninja (single config, Debug)",
-      "description": "Clang with the MSVC-style driver; uses LLVM installed at C:/Program Files/LLVM.",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-clang-cl",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
-        "CMAKE_RC_COMPILER": "C:/Program Files/LLVM/bin/llvm-rc.exe",
-        "CMAKE_MT": "C:/Program Files/LLVM/bin/llvm-mt.exe",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      },
-      "environment": {
-        "VCPKG_ROOT": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/vcpkg",
-        "PATH": "C:/Program Files/LLVM/bin;$penv{PATH}"
       }
     }
   ],
@@ -89,14 +53,6 @@
     {
       "name": "ninja",
       "configurePreset": "ninja"
-    },
-    {
-      "name": "clang",
-      "configurePreset": "clang"
-    },
-    {
-      "name": "clang-cl",
-      "configurePreset": "clang-cl"
     }
   ],
   "testPresets": [
@@ -119,20 +75,6 @@
     {
       "name": "ninja",
       "configurePreset": "ninja",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "clang",
-      "configurePreset": "clang",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "clang-cl",
-      "configurePreset": "clang-cl",
       "output": {
         "outputOnFailure": true
       }
