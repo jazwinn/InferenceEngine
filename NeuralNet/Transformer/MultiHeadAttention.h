@@ -1,5 +1,11 @@
 #pragma once
 
+#include <cmath>
+#include <limits>
+#include <memory>
+#include <stdexcept>
+#include <vector>
+
 #include "Math/Tensor.h"
 #include "NeuralNet/Module.h"
 #include "NeuralNet/Linear.h"
@@ -15,14 +21,15 @@ namespace transformer
     class MultiHeadAttention : public nn::Module<T>
     {
     public:
-        MultiHeadAttention(size_t d_model, size_t num_heads, bool use_bias = true) : d_model(d_model),
-                                                                                     num_heads(num_heads),
-                                                                                     head_dim(ValidatedHeadDim(d_model, num_heads)),
-                                                                                     scale(std::sqrt(static_cast<T>(head_dim))),
-                                                                                     query(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
-                                                                                     key(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
-                                                                                     value(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
-                                                                                     output_proj(std::make_shared<Linear<T>>(d_model, d_model, use_bias))
+        MultiHeadAttention(size_t d_model, size_t num_heads, bool use_bias = true) : 
+        d_model(d_model),
+        num_heads(num_heads),
+        head_dim(ValidatedHeadDim(d_model, num_heads)),
+        scale(std::sqrt(static_cast<T>(head_dim))),
+        query(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
+        key(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
+        value(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
+        output_proj(std::make_shared<Linear<T>>(d_model, d_model, use_bias))
         {
 
             this->RegisterSubmodule("query", query);
@@ -101,15 +108,17 @@ namespace transformer
             return Forward(input, args...);
         }
 
-        std::shared_ptr<Linear<T>> query;
-        std::shared_ptr<Linear<T>> key;
-        std::shared_ptr<Linear<T>> value;
-        std::shared_ptr<Linear<T>> output_proj;
-
+        // Declared before the projections so head_dim is validated first:
+        // members are initialized in declaration order, not initializer-list order.
         size_t d_model;
         size_t num_heads;
         size_t head_dim;
         T scale;
+
+        std::shared_ptr<Linear<T>> query;
+        std::shared_ptr<Linear<T>> key;
+        std::shared_ptr<Linear<T>> value;
+        std::shared_ptr<Linear<T>> output_proj;
     };
 
 }

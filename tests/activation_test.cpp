@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <vector>
 
+using activation::GELU;
 using activation::ReLU;
 using activation::Sigmoid;
 using activation::Softmax;
@@ -179,6 +180,34 @@ TEST(TanhForward, SaturatesWithinPlusMinusOne) {
         EXPECT_LE(out(0, j), 1.0f);
         EXPECT_FALSE(std::isnan(out(0, j)));
     }
+}
+
+// --- GELU -------------------------------------------------------------------
+
+TEST(GELUForward, MatchesTheTanhApproximation) {
+    GELU<float> gelu;
+    const Tensor<float> in = RowVector({-3.0f, -1.0f, 0.0f, 0.5f, 1.0f, 3.0f});
+
+    const Tensor<float> out = gelu.Forward(in);
+
+    // Reference values from torch.nn.functional.gelu(x, approximate="tanh").
+    EXPECT_NEAR(out(0, 0), -0.0036374f, kTol);
+    EXPECT_NEAR(out(0, 1), -0.1588080f, kTol);
+    EXPECT_NEAR(out(0, 2), 0.0f, kTol);
+    EXPECT_NEAR(out(0, 3), 0.3457140f, kTol);
+    EXPECT_NEAR(out(0, 4), 0.8411920f, kTol);
+    EXPECT_NEAR(out(0, 5), 2.9963626f, kTol);
+}
+
+TEST(GELUForward, PreservesShapeAndLeavesTheInputUntouched) {
+    GELU<float> gelu;
+    const Tensor<float> in({2, 3, 4}, 1.0f);
+
+    const Tensor<float> out = gelu.Forward(in);
+
+    EXPECT_EQ(out.Shape(), (std::vector<size_t>{2, 3, 4}));
+    EXPECT_NEAR(out(1, 2, 3), 0.8411920f, kTol);
+    EXPECT_FLOAT_EQ(in(1, 2, 3), 1.0f);
 }
 
 // --- Softmax ----------------------------------------------------------------

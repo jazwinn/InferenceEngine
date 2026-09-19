@@ -1,24 +1,24 @@
 #pragma once
 
-#include <nlohmann/json.hpp>
+#include <utility>
+
+#include "TransformerConfig.h"
+#include "MultiHeadAttention.h"
 
 namespace transformer
 {
-    struct TransformerConfig
-    {
-        size_t d_model;
-        size_t num_heads;
-        size_t num_layers;
-        size_t feedforward_dim;
-        float dropout_rate;
-    };
 
     template <typename T>
     class Transformer
     {
     public:
-        Transformer(){
-
+        explicit Transformer(TransformerConfig _config):
+        config(std::move(_config)),
+        atten(config.d_model, config.num_heads)
+        {
         }
+
+        TransformerConfig config;
+        MultiHeadAttention<T> atten;
     };
 }
