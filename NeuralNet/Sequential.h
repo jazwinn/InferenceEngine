@@ -14,9 +14,7 @@ namespace nn
     template <typename T, typename... Layers>
     class Sequential : public Module<T>
     {
-        static_assert((std::is_same_v<typename Layers::value_type, T> && ...),
-                      "Sequential: every layer must use the same element type.");
-
+    static_assert((std::is_same_v<typename Layers::value_type, T> && ...), "Sequential: every layer must use the same element type.");
     public:
         explicit Sequential(Layers... layers)
             requires(sizeof...(Layers) > 0)

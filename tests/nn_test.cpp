@@ -131,6 +131,123 @@ TEST(Module, ReportsParametersThroughABasePointer) {
     EXPECT_EQ(m->Parameters().size(), 2u);
 }
 
+// --- Module: named parameters -----------------------------------------------
+
+namespace {
+
+std::vector<std::string> NamesOf(const Module<float>& m, const std::string& prefix = "") {
+    std::vector<std::string> names;
+    for (const auto& param : m.NamedParameters(prefix)) names.push_back(param.name);
+    return names;
+}
+
+}  // namespace
+
+TEST(ModuleNamedParameters, EmptyWhenNothingIsRegistered) {
+    EXPECT_TRUE(Passthrough<float>().NamedParameters().empty());
+}
+
+TEST(ModuleNamedParameters, UsesTheRegisteredNames) {
+    Linear<float> linear(3, 2);
+    EXPECT_EQ(NamesOf(linear), (std::vector<std::string>{"weight", "bias"}));
+}
+
+TEST(ModuleNamedParameters, PairsEachNameWithItsTensor) {
+    Linear<float> linear(3, 2);
+    const auto named = linear.NamedParameters();
+
+    ASSERT_EQ(named.size(), 2u);
+    EXPECT_EQ(named[0].tensor, linear.weight);
+    EXPECT_EQ(named[1].tensor, linear.bias);
+}
+
+TEST(ModuleNamedParameters, JoinsSubmoduleNamesWithDots) {
+    TwoLayer<float> net(4, 3, 2);
+    EXPECT_EQ(NamesOf(net), (std::vector<std::string>{
+        "first.weight", "first.bias", "second.weight", "second.bias"}));
+}
+
+TEST(ModuleNamedParameters, BuildsPathsThroughEveryLevel) {
+    Passthrough<float> root;
+    auto block = std::make_shared<Passthrough<float>>();
+    block->RegisterSubmodule("attn", std::make_shared<Linear<float>>(2, 2));
+    root.RegisterSubmodule("h", block);
+
+    EXPECT_EQ(NamesOf(root), (std::vector<std::string>{"h.attn.weight", "h.attn.bias"}));
+}
+
+TEST(ModuleNamedParameters, ListsOwnParametersBeforeSubmodules) {
+    TwoLayer<float> net(4, 3, 2);
+    net.RegisterParameter("scale", std::make_shared<Tensor<float>>(std::vector<size_t>{1}));
+
+    const auto names = NamesOf(net);
+    ASSERT_EQ(names.size(), 5u);
+    EXPECT_EQ(names[0], "scale");
+    EXPECT_EQ(names[1], "first.weight");
+}
+
+TEST(ModuleNamedParameters, KeepsRegistrationOrder) {
+    Passthrough<float> m;
+    for (const char* name : {"z", "a", "m"})
+        m.RegisterParameter(name, std::make_shared<Tensor<float>>(std::vector<size_t>{1}));
+
+    EXPECT_EQ(NamesOf(m), (std::vector<std::string>{"z", "a", "m"}));
+}
+
+TEST(ModuleNamedParameters, ReregisteringKeepsThePositionAndTheNewTensor) {
+    Passthrough<float> m;
+    auto first = std::make_shared<Tensor<float>>(std::vector<size_t>{1});
+    auto second = std::make_shared<Tensor<float>>(std::vector<size_t>{1});
+    m.RegisterParameter("a", first);
+    m.RegisterParameter("b", std::make_shared<Tensor<float>>(std::vector<size_t>{1}));
+    m.RegisterParameter("a", second);
+
+    const auto named = m.NamedParameters();
+    ASSERT_EQ(named.size(), 2u);
+    EXPECT_EQ(named[0].name, "a");
+    EXPECT_EQ(named[0].tensor, second);
+}
+
+TEST(ModuleNamedParameters, ReregisteringASubmoduleReplacesIt) {
+    Passthrough<float> m;
+    m.RegisterSubmodule("layer", std::make_shared<Linear<float>>(2, 2));
+    m.RegisterSubmodule("layer", std::make_shared<Linear<float>>(2, 2, false));
+
+    EXPECT_EQ(NamesOf(m), (std::vector<std::string>{"layer.weight"}));
+}
+
+TEST(ModuleNamedParameters, PrependsAPrefix) {
+    Linear<float> linear(3, 2);
+    EXPECT_EQ(NamesOf(linear, "h.0.mlp.c_fc."),
+              (std::vector<std::string>{"h.0.mlp.c_fc.weight", "h.0.mlp.c_fc.bias"}));
+}
+
+TEST(ModuleNamedParameters, MatchesParametersInOrder) {
+    TwoLayer<float> net(4, 3, 2);
+    const auto named = net.NamedParameters();
+    const auto params = net.Parameters();
+
+    ASSERT_EQ(named.size(), params.size());
+    for (size_t i = 0; i < params.size(); ++i) EXPECT_EQ(named[i].tensor, params[i]) << named[i].name;
+}
+
+TEST(ModuleNamedParameters, WorkThroughABasePointer) {
+    std::shared_ptr<Module<float>> m = std::make_shared<TwoLayer<float>>(4, 3, 2);
+    EXPECT_EQ(NamesOf(*m).front(), "first.weight");
+}
+
+TEST(ModuleNamedParameters, ASharedTensorAppearsUnderEachName) {
+    // Tied weights (GPT-2's wte and lm_head) are one tensor under two names.
+    Passthrough<float> m;
+    auto tied = std::make_shared<Tensor<float>>(std::vector<size_t>{2, 2});
+    m.RegisterParameter("wte", tied);
+    m.RegisterParameter("lm_head", tied);
+
+    const auto named = m.NamedParameters();
+    ASSERT_EQ(named.size(), 2u);
+    EXPECT_EQ(named[0].tensor, named[1].tensor);
+}
+
 // --- Linear: construction ---------------------------------------------------
 
 TEST(Linear, WeightIsOutputByInput) {
