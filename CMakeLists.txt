@@ -17,6 +17,8 @@ endif()
 
 add_subdirectory(Math)
 add_subdirectory(NeuralNet)
+add_subdirectory(Reflection)
+add_subdirectory(Serialize)
 
 include(CTest)
 if(BUILD_TESTING AND PROJECT_IS_TOP_LEVEL)

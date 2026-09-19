@@ -16,3 +16,11 @@ target_link_libraries(nn_tests PRIVATE
     GTest::gtest_main
 )
 gtest_discover_tests(nn_tests)
+
+add_executable(serialize_tests serialize_test.cpp)
+target_link_libraries(serialize_tests PRIVATE
+    InferenceEngine::Serialize
+    GTest::gtest
+    GTest::gtest_main
+)
+gtest_discover_tests(serialize_tests)
