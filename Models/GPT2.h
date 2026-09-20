@@ -1,6 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
+#include <fstream>
+#include <limits>
+#include <string_view>
+#include <unordered_map>
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -263,5 +269,381 @@ namespace llm{
     {
         LoadGPT2Weights(model, serialize::ReadSafetensors<T>(path));
     }
+
+    class GPT2Tokenizer
+    {
+    public:
+        GPT2Tokenizer(const std::string &vocab_json, const std::string &merges_txt)
+        {
+            BuildByteMaps();
+            LoadVocab(vocab_json);
+            LoadMerges(merges_txt);
+        }
+
+        std::vector<int64_t> Encode(std::string_view text) const
+        {
+            std::vector<int64_t> ids;
+            for (const std::string &word : SplitWords(text))
+            {
+                const std::vector<int64_t> &tokens = EncodeWord(MapBytes(word));
+                ids.insert(ids.end(), tokens.begin(), tokens.end());
+            }
+            return ids;
+        }
+
+        std::string Decode(const std::vector<int64_t> &ids) const
+        {
+            return UnmapBytes(Join(ids));
+        }
+
+        size_t VocabSize() const noexcept { return m_reverse.size(); }
+
+    private:
+        using Pair = std::pair<std::string, std::string>;
+
+        std::string MapBytes(const std::string &word) const
+        {
+            std::string mapped;
+            mapped.reserve(word.size());
+            for (unsigned char byte : word)
+            {
+                mapped += m_byte_to_char[byte];
+            }
+            return mapped;
+        }
+
+        const std::vector<int64_t> &EncodeWord(const std::string &mapped) const
+        {
+            const auto cached = m_cache.find(mapped);
+            if (cached != m_cache.end())
+            {
+                return cached->second;
+            }
+            return m_cache.emplace(mapped, Lookup(Merge(SplitCharacters(mapped)))).first->second;
+        }
+
+        std::vector<std::string> Merge(std::vector<std::string> symbols) const
+        {
+            while (symbols.size() > 1)
+            {
+                const std::optional<size_t> best = BestPair(symbols);
+                if (!best)
+                {
+                    break;
+                }
+                symbols = MergePair(symbols, symbols[*best], symbols[*best + 1]);
+            }
+            return symbols;
+        }
+
+        std::optional<size_t> BestPair(const std::vector<std::string> &symbols) const
+        {
+            std::optional<size_t> best;
+            int best_rank = std::numeric_limits<int>::max();
+
+            for (size_t i = 0; i + 1 < symbols.size(); ++i)
+            {
+                const auto rule = m_ranks.find(Pair{symbols[i], symbols[i + 1]});
+                if (rule != m_ranks.end() && rule->second < best_rank)
+                {
+                    best_rank = rule->second;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        static std::vector<std::string> MergePair(const std::vector<std::string> &symbols,
+                                                  const std::string &left, const std::string &right)
+        {
+            std::vector<std::string> merged;
+            merged.reserve(symbols.size());
+
+            for (size_t i = 0; i < symbols.size();)
+            {
+                const bool matches = i + 1 < symbols.size() && symbols[i] == left && symbols[i + 1] == right;
+                merged.push_back(matches ? left + right : symbols[i]);
+                i += matches ? 2 : 1;
+            }
+            return merged;
+        }
+
+        std::vector<int64_t> Lookup(const std::vector<std::string> &symbols) const
+        {
+            std::vector<int64_t> ids;
+            ids.reserve(symbols.size());
+
+            for (const std::string &symbol : symbols)
+            {
+                const auto entry = m_vocab.find(symbol);
+                if (entry == m_vocab.end())
+                {
+                    throw std::runtime_error("GPT2Tokenizer: no vocabulary entry for '" + symbol + "'.");
+                }
+                ids.push_back(entry->second);
+            }
+            return ids;
+        }
+
+        std::string Join(const std::vector<int64_t> &ids) const
+        {
+            std::string mapped;
+            for (int64_t id : ids)
+            {
+                if (id < 0 || static_cast<size_t>(id) >= m_reverse.size())
+                {
+                    throw std::out_of_range("GPT2Tokenizer: token id is outside the vocabulary.");
+                }
+                mapped += m_reverse[static_cast<size_t>(id)];
+            }
+            return mapped;
+        }
+
+        std::string UnmapBytes(const std::string &mapped) const
+        {
+            std::string text;
+            for (size_t i = 0; i < mapped.size();)
+            {
+                const size_t width = Utf8Width(mapped[i]);
+                const auto byte = m_char_to_byte.find(mapped.substr(i, width));
+                if (byte == m_char_to_byte.end())
+                {
+                    throw std::runtime_error("GPT2Tokenizer: token contains a character outside the byte map.");
+                }
+                text += byte->second;
+                i += width;
+            }
+            return text;
+        }
+
+        enum class CharClass
+        {
+            Letter,
+            Number,
+            Other
+        };
+
+        static size_t Utf8Width(char first)
+        {
+            const unsigned char lead = static_cast<unsigned char>(first);
+            if (lead < 0x80) return 1;
+            if ((lead & 0xE0) == 0xC0) return 2;
+            if ((lead & 0xF0) == 0xE0) return 3;
+            return 4;
+        }
+
+        static bool IsSpace(char c)
+        {
+            return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
+        }
+
+        static CharClass ClassOf(char c)
+        {
+            const unsigned char value = static_cast<unsigned char>(c);
+            if (value >= 0x80) return CharClass::Letter;
+            if ((value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z')) return CharClass::Letter;
+            if (value >= '0' && value <= '9') return CharClass::Number;
+            return CharClass::Other;
+        }
+
+        static std::optional<size_t> ContractionLength(std::string_view text, size_t at)
+        {
+            static const std::array<std::string_view, 7> contractions{"'s", "'t", "'re", "'ve", "'m", "'ll", "'d"};
+
+            for (std::string_view contraction : contractions)
+            {
+                if (text.size() - at >= contraction.size() && text.compare(at, contraction.size(), contraction) == 0)
+                {
+                    return contraction.size();
+                }
+            }
+            return std::nullopt;
+        }
+
+        static size_t EndOfWord(std::string_view text, size_t at)
+        {
+            const size_t first = text[at] == ' ' ? at + 1 : at;
+            if (first >= text.size() || IsSpace(text[first]))
+            {
+                return at;
+            }
+
+            const CharClass group = ClassOf(text[first]);
+            size_t end = first;
+            while (end < text.size() && !IsSpace(text[end]) && ClassOf(text[end]) == group)
+            {
+                end += Utf8Width(text[end]);
+            }
+            return end;
+        }
+
+        static size_t EndOfSpaces(std::string_view text, size_t at)
+        {
+            size_t end = at;
+            while (end < text.size() && IsSpace(text[end]))
+            {
+                ++end;
+            }
+            if (end < text.size() && end - at > 1)
+            {
+                --end;
+            }
+            return end;
+        }
+
+        static std::vector<std::string> SplitWords(std::string_view text)
+        {
+            std::vector<std::string> words;
+
+            for (size_t i = 0; i < text.size();)
+            {
+                size_t end = i;
+
+                if (const std::optional<size_t> contraction = ContractionLength(text, i))
+                {
+                    end = i + *contraction;
+                }
+                else if (const size_t word = EndOfWord(text, i); word > i)
+                {
+                    end = word;
+                }
+                else
+                {
+                    end = EndOfSpaces(text, i);
+                }
+
+                words.emplace_back(text.substr(i, end - i));
+                i = end;
+            }
+            return words;
+        }
+
+        static std::vector<std::string> SplitCharacters(const std::string &mapped)
+        {
+            std::vector<std::string> symbols;
+            for (size_t i = 0; i < mapped.size();)
+            {
+                const size_t width = Utf8Width(mapped[i]);
+                symbols.push_back(mapped.substr(i, width));
+                i += width;
+            }
+            return symbols;
+        }
+
+        static std::string Utf8(int codepoint)
+        {
+            std::string out;
+            if (codepoint < 0x80)
+            {
+                out += static_cast<char>(codepoint);
+            }
+            else if (codepoint < 0x800)
+            {
+                out += static_cast<char>(0xC0 | (codepoint >> 6));
+                out += static_cast<char>(0x80 | (codepoint & 0x3F));
+            }
+            else
+            {
+                out += static_cast<char>(0xE0 | (codepoint >> 12));
+                out += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                out += static_cast<char>(0x80 | (codepoint & 0x3F));
+            }
+            return out;
+        }
+
+        static bool IsPrintable(int byte)
+        {
+            return (byte >= 33 && byte <= 126) || (byte >= 161 && byte <= 172) || (byte >= 174 && byte <= 255);
+        }
+
+        void BuildByteMaps()
+        {
+            int next = 0;
+            for (int byte = 0; byte < 256; ++byte)
+            {
+                const int codepoint = IsPrintable(byte) ? byte : 256 + next++;
+                const std::string character = Utf8(codepoint);
+
+                m_byte_to_char[static_cast<size_t>(byte)] = character;
+                m_char_to_byte[character] = static_cast<char>(byte);
+            }
+        }
+
+        void LoadVocab(const std::string &path)
+        {
+            std::ifstream file(path);
+            if (!file)
+            {
+                throw std::runtime_error("GPT2Tokenizer: failed to open " + path);
+            }
+
+            const nlohmann::json json = nlohmann::json::parse(file, nullptr, false);
+            if (json.is_discarded() || !json.is_object())
+            {
+                throw std::runtime_error("GPT2Tokenizer: " + path + " is not a JSON object.");
+            }
+
+            m_reverse.resize(json.size());
+            for (const auto &[token, id] : json.items())
+            {
+                if (!id.is_number_integer())
+                {
+                    throw std::runtime_error("GPT2Tokenizer: vocab entry '" + token + "' has a non-integer id.");
+                }
+
+                const int64_t value = id.get<int64_t>();
+                if (value < 0 || static_cast<size_t>(value) >= m_reverse.size())
+                {
+                    throw std::runtime_error("GPT2Tokenizer: vocab id out of range for '" + token + "'.");
+                }
+
+                m_vocab.emplace(token, value);
+                m_reverse[static_cast<size_t>(value)] = token;
+            }
+        }
+
+        void LoadMerges(const std::string &path)
+        {
+            std::ifstream file(path);
+            if (!file)
+            {
+                throw std::runtime_error("GPT2Tokenizer: failed to open " + path);
+            }
+
+            std::string line;
+            int rank = 0;
+            while (std::getline(file, line))
+            {
+                if (!line.empty() && line.back() == '\r')
+                {
+                    line.pop_back();
+                }
+                if (line.empty() || line[0] == '#')
+                {
+                    continue;
+                }
+
+                const size_t space = line.find(' ');
+                if (space == std::string::npos)
+                {
+                    throw std::runtime_error("GPT2Tokenizer: malformed merge line: " + line);
+                }
+
+                m_ranks.emplace(Pair{line.substr(0, space), line.substr(space + 1)}, rank++);
+            }
+
+            if (m_ranks.empty())
+            {
+                throw std::runtime_error("GPT2Tokenizer: " + path + " has no merges.");
+            }
+        }
+
+        std::unordered_map<std::string, int64_t> m_vocab;
+        std::vector<std::string> m_reverse;
+        std::map<Pair, int> m_ranks;
+        std::array<std::string, 256> m_byte_to_char;
+        std::unordered_map<std::string, std::string> m_char_to_byte;
+        mutable std::unordered_map<std::string, std::vector<int64_t>> m_cache;
+    };
 
 }

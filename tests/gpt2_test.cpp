@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <memory>
 #include <string>
 #include <cmath>
@@ -16,6 +17,7 @@
 #include <vector>
 
 using llm::GPT2;
+using llm::GPT2Tokenizer;
 using math::Tensor;
 using transformer::TransformerConfig;
 
@@ -363,4 +365,302 @@ TEST(GPT2Load, ReadsFromASafetensorsFile) {
 
     EXPECT_FLOAT_EQ((*model.wte->weight)(0, 0), 1.01f);
     EXPECT_FLOAT_EQ((*model.transformer->ln_f->beta)(0), 91.01f);
+}
+
+// --- tokenizer --------------------------------------------------------------
+
+namespace {
+
+// Writes a vocab.json / merges.txt pair, removed on destruction.
+class TempTokenizerFiles {
+public:
+    TempTokenizerFiles(const std::vector<std::string>& tokens, const std::vector<std::string>& merges) {
+        const std::string stem = "tokenizer_test_" + std::to_string(reinterpret_cast<std::uintptr_t>(this));
+        m_vocab = std::filesystem::temp_directory_path() / (stem + "_vocab.json");
+        m_merges = std::filesystem::temp_directory_path() / (stem + "_merges.txt");
+
+        nlohmann::json vocab = nlohmann::json::object();
+        for (size_t i = 0; i < tokens.size(); ++i) vocab[tokens[i]] = i;
+        std::ofstream(m_vocab) << vocab.dump();
+
+        std::ofstream merge_file(m_merges);
+        merge_file << "#version: 0.2\n";
+        for (const std::string& merge : merges) merge_file << merge << "\n";
+    }
+    ~TempTokenizerFiles() {
+        std::filesystem::remove(m_vocab);
+        std::filesystem::remove(m_merges);
+    }
+
+    std::string Vocab() const { return m_vocab.string(); }
+    std::string Merges() const { return m_merges.string(); }
+
+private:
+    std::filesystem::path m_vocab;
+    std::filesystem::path m_merges;
+};
+
+// Every byte as a single token, so any text can be encoded, plus the merged
+// pieces the merge rules below produce. "Ġ" is the stand-in for a space.
+std::vector<std::string> ByteTokens() {
+    std::vector<std::string> tokens;
+    for (int b = 0; b < 256; ++b) {
+        int codepoint = b;
+        if (!((b >= 33 && b <= 126) || (b >= 161 && b <= 172) || (b >= 174 && b <= 255))) {
+            static int next = 0;
+            static std::map<int, int> assigned;
+            if (!assigned.count(b)) assigned[b] = 256 + next++;
+            codepoint = assigned[b];
+        }
+        std::string utf8;
+        if (codepoint < 0x80) {
+            utf8 += static_cast<char>(codepoint);
+        } else {
+            utf8 += static_cast<char>(0xC0 | (codepoint >> 6));
+            utf8 += static_cast<char>(0x80 | (codepoint & 0x3F));
+        }
+        tokens.push_back(utf8);
+    }
+    return tokens;
+}
+
+const std::string kSpace = "\xC4\xA0";   // U+0120 'Ġ'
+
+// A tokenizer whose merges build "og" -> "dog" -> "Ġdog", like GPT-2 does.
+TempTokenizerFiles DogFiles() {
+    std::vector<std::string> tokens = ByteTokens();
+    tokens.push_back("og");
+    tokens.push_back("dog");
+    tokens.push_back(kSpace + "dog");
+    tokens.push_back("<|endoftext|>");
+
+    return TempTokenizerFiles(tokens, {"o g", "d og", kSpace + " dog"});
+}
+
+GPT2Tokenizer Dog(const TempTokenizerFiles& files) {
+    return GPT2Tokenizer(files.Vocab(), files.Merges());
+}
+
+}  // namespace
+
+// --- loading ----------------------------------------------------------------
+
+TEST(TokenizerLoad, ReadsVocabAndMerges) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    EXPECT_EQ(tokenizer.VocabSize(), 260u);   // 256 bytes + og + dog + Ġdog + <|endoftext|>
+}
+
+TEST(TokenizerLoad, RejectsMissingFiles) {
+    const TempTokenizerFiles files = DogFiles();
+
+    EXPECT_THROW(GPT2Tokenizer("no/such/vocab.json", files.Merges()), std::runtime_error);
+    EXPECT_THROW(GPT2Tokenizer(files.Vocab(), "no/such/merges.txt"), std::runtime_error);
+}
+
+// --- encoding ---------------------------------------------------------------
+
+TEST(TokenizerEncode, MergesToTheLongestLearnedToken) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    // "dog" merges o+g, then d+og; " dog" merges once more with the space.
+    EXPECT_EQ(tokenizer.Encode("dog").size(), 1u);
+    EXPECT_EQ(tokenizer.Encode(" dog").size(), 1u);
+    EXPECT_NE(tokenizer.Encode("dog"), tokenizer.Encode(" dog")) << "a leading space is part of the token";
+}
+
+TEST(TokenizerEncode, FallsBackToBytesForUnknownText) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    EXPECT_EQ(tokenizer.Encode("cat").size(), 3u) << "no merge rules cover c, a, t";
+}
+
+TEST(TokenizerEncode, SplitsOnWordBoundaries) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    // "dog dog" -> "dog" + " dog"; merges never cross the boundary.
+    const std::vector<int64_t> ids = tokenizer.Encode("dog dog");
+    ASSERT_EQ(ids.size(), 2u);
+    EXPECT_EQ(ids[0], tokenizer.Encode("dog")[0]);
+    EXPECT_EQ(ids[1], tokenizer.Encode(" dog")[0]);
+}
+
+TEST(TokenizerEncode, KeepsLettersDigitsAndPunctuationApart) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    // "ab12!?" is three runs: letters, digits, punctuation -- 6 byte tokens here.
+    EXPECT_EQ(tokenizer.Encode("ab12!?").size(), 6u);
+    EXPECT_EQ(tokenizer.Decode(tokenizer.Encode("ab12!?")), "ab12!?");
+}
+
+TEST(TokenizerEncode, IsEmptyForEmptyInput) {
+    const TempTokenizerFiles files = DogFiles();
+    EXPECT_TRUE(Dog(files).Encode("").empty());
+}
+
+// --- decoding ---------------------------------------------------------------
+
+TEST(TokenizerDecode, UndoesTheByteMapping) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    EXPECT_EQ(tokenizer.Decode(tokenizer.Encode(" dog")), " dog") << "not the stand-in character";
+}
+
+TEST(TokenizerDecode, RejectsAnIdOutsideTheVocabulary) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    EXPECT_THROW(tokenizer.Decode({999999}), std::out_of_range);
+    EXPECT_THROW(tokenizer.Decode({-1}), std::out_of_range);
+}
+
+// --- round trips ------------------------------------------------------------
+
+TEST(TokenizerRoundTrip, RecoversTextExactly) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    for (const std::string& text : {"dog", " dog", "dog dog dog", "The dog is here.",
+                                    "a  b", "  leading", "trailing  ", "line\nbreak",
+                                    "tabs\tand\nnewlines\n", "don't", "1234567890",
+                                    "mixed123text!", "!@#$%^&*()"}) {
+        EXPECT_EQ(tokenizer.Decode(tokenizer.Encode(text)), text) << "text: [" << text << "]";
+    }
+}
+
+TEST(TokenizerRoundTrip, HandlesUtf8AndEmoji) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    for (const std::string& text : {"caf\xC3\xA9", "\xE4\xBD\xA0\xE5\xA5\xBD",
+                                    "\xF0\x9F\x90\xB6", "emoji \xF0\x9F\x8E\x89 party"}) {
+        EXPECT_EQ(tokenizer.Decode(tokenizer.Encode(text)), text);
+    }
+}
+
+TEST(TokenizerRoundTrip, HandlesEveryByteValue) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    std::string all;
+    for (int b = 1; b < 256; ++b) all += static_cast<char>(b);
+
+    EXPECT_EQ(tokenizer.Decode(tokenizer.Encode(all)), all);
+}
+
+TEST(TokenizerRoundTrip, RepeatedTextUsesTheCacheAndStaysCorrect) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    const std::vector<int64_t> once = tokenizer.Encode("dog dog dog dog");
+    const std::vector<int64_t> again = tokenizer.Encode("dog dog dog dog");
+
+    EXPECT_EQ(once, again);
+    EXPECT_EQ(tokenizer.Decode(once), "dog dog dog dog");
+}
+
+TEST(TokenizerEncode, KeepsContractionsAsTheirOwnWord) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    for (const std::string& suffix : {"'s", "'t", "'re", "'ve", "'m", "'ll", "'d"}) {
+        const std::string text = "dog" + suffix;
+        const std::vector<int64_t> ids = tokenizer.Encode(text);
+        ASSERT_FALSE(ids.empty());
+        EXPECT_EQ(ids[0], tokenizer.Encode("dog")[0]) << text << " must start with the whole word";
+        EXPECT_EQ(tokenizer.Decode(ids), text);
+    }
+}
+
+TEST(TokenizerEncode, AttachesOnlyOneLeadingSpaceToAWord) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    // "  dog" is a lone space followed by " dog", not two spaces then "dog".
+    const std::vector<int64_t> ids = tokenizer.Encode("  dog");
+    ASSERT_EQ(ids.size(), 2u);
+    EXPECT_EQ(ids[1], tokenizer.Encode(" dog")[0]);
+    EXPECT_EQ(tokenizer.Decode(ids), "  dog");
+}
+
+TEST(TokenizerEncode, TrailingWhitespaceStaysTogether) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    EXPECT_EQ(tokenizer.Encode("dog   ").size(), 4u) << "one word token plus three spaces";
+    EXPECT_EQ(tokenizer.Decode(tokenizer.Encode("dog   ")), "dog   ");
+}
+
+TEST(TokenizerEncode, DigitsFormTheirOwnRun) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    EXPECT_EQ(tokenizer.Encode("dog2024").size(), 5u) << "dog + 2 + 0 + 2 + 4";
+}
+
+TEST(TokenizerEncode, ConcatenationMatchesEncodingTheParts) {
+    const TempTokenizerFiles files = DogFiles();
+    const GPT2Tokenizer tokenizer = Dog(files);
+
+    std::vector<int64_t> parts = tokenizer.Encode("The");
+    for (const std::vector<int64_t>& piece : {tokenizer.Encode(" dog"), tokenizer.Encode(" runs")})
+        parts.insert(parts.end(), piece.begin(), piece.end());
+
+    EXPECT_EQ(tokenizer.Encode("The dog runs"), parts);
+}
+
+TEST(TokenizerEncode, AppliesMergesInRankOrder) {
+    // "ab" and "bc" both merge, but "b c" ranks first, so "bc" wins and "a"
+    // is left alone -- left-to-right merging would produce "ab" + "c".
+    std::vector<std::string> tokens = ByteTokens();
+    tokens.push_back("bc");
+    tokens.push_back("ab");
+    const TempTokenizerFiles files(tokens, {"b c", "a b"});
+    const GPT2Tokenizer tokenizer(files.Vocab(), files.Merges());
+
+    const std::vector<int64_t> ids = tokenizer.Encode("abc");
+    ASSERT_EQ(ids.size(), 2u);
+    EXPECT_EQ(ids[0], tokenizer.Encode("a")[0]);
+    EXPECT_EQ(tokenizer.Decode(ids), "abc");
+}
+
+TEST(TokenizerEncode, MergesEveryOccurrenceOfAPair) {
+    std::vector<std::string> tokens = ByteTokens();
+    tokens.push_back("aa");
+    const TempTokenizerFiles files(tokens, {"a a"});
+    const GPT2Tokenizer tokenizer(files.Vocab(), files.Merges());
+
+    EXPECT_EQ(tokenizer.Encode("aaaa").size(), 2u);
+    EXPECT_EQ(tokenizer.Encode("aaa").size(), 2u) << "aa + a; the pair cannot overlap itself";
+}
+
+TEST(TokenizerLoad, RejectsAMalformedMergeLine) {
+    const TempTokenizerFiles files(ByteTokens(), {"nospacehere"});
+    EXPECT_THROW(GPT2Tokenizer(files.Vocab(), files.Merges()), std::runtime_error);
+}
+
+TEST(TokenizerLoad, RejectsAnEmptyMergesFile) {
+    const TempTokenizerFiles files(ByteTokens(), {});
+    EXPECT_THROW(GPT2Tokenizer(files.Vocab(), files.Merges()), std::runtime_error);
+}
+
+TEST(TokenizerLoad, RejectsAVocabThatIsNotJson) {
+    const TempTokenizerFiles files = DogFiles();
+    std::ofstream(files.Vocab()) << "{not json";
+
+    EXPECT_THROW(GPT2Tokenizer(files.Vocab(), files.Merges()), std::runtime_error);
+}
+
+TEST(TokenizerEncode, ThrowsWhenAMergeProducesAnUnknownToken) {
+    // The merge rule builds "aa", but the vocabulary has no such entry.
+    const TempTokenizerFiles files(ByteTokens(), {"a a"});
+    const GPT2Tokenizer tokenizer(files.Vocab(), files.Merges());
+
+    EXPECT_THROW(tokenizer.Encode("aa"), std::runtime_error);
 }
