@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <Models/GPT2.h>
+#include <Models/gpt2/GPT2.h>
 #include <Models/ModelConfigs.h>
 
 #include <algorithm>

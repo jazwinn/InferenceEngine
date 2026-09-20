@@ -5,3 +5,8 @@ vcpkg_installed/
 .vs/
 .cache/
 CMakeUserPresets.json
+
+# model checkpoints
+Models/gpt2/*.json
+Models/gpt2/*.txt
+*.safetensors

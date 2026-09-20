@@ -51,6 +51,11 @@
       "configuration": "Debug"
     },
     {
+      "name": "vs2022-release",
+      "configurePreset": "vs2022",
+      "configuration": "Release"
+    },
+    {
       "name": "ninja",
       "configurePreset": "ninja"
     }
@@ -68,6 +73,14 @@
       "name": "vs2022-debug",
       "configurePreset": "vs2022",
       "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "vs2022-release",
+      "configurePreset": "vs2022",
+      "configuration": "Release",
       "output": {
         "outputOnFailure": true
       }
