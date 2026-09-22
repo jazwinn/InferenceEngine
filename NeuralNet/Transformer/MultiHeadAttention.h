@@ -10,12 +10,17 @@
 #include "NeuralNet/Module.h"
 #include "NeuralNet/Linear.h"
 #include "NeuralNet/Activation.h"
+#include "NeuralNet/Transformer/KVCache.h"
 
 namespace transformer
 {
 
-    using namespace activation;
-    using namespace nn;
+    using math::Tensor;
+    using math::MatMul;
+    using math::CopyInto;
+    using nn::Module;
+    using nn::Linear;
+    using activation::Softmax;
 
     template <typename T = float>
     class MultiHeadAttention : public nn::Module<T>
@@ -63,18 +68,21 @@ namespace transformer
             return transposed.Reshape(transposed.Shape()[0], transposed.Shape()[1], d_model); // (batch_size, seq_length, d_model)
         }
 
-        Tensor<T> Forward(const Tensor<T>& q, const Tensor<T>& k, const Tensor<T>& v, const Tensor<bool>& mask = Tensor<bool>(), bool causal = false)
+        // Q, K and V arrive already projected and split into heads. K and V may be
+        // cache views, so they can be longer than Q and non-contiguous; MatMul
+        // reads them through their strides either way.
+        Tensor<T> Atten(const Tensor<T>& Q, const Tensor<T>& K, const Tensor<T>& V, const Tensor<bool>& mask = Tensor<bool>(), bool causal = false)
         {
-            Tensor<T> Q = SplitHeads(query->Forward(q));
-            Tensor<T> K = SplitHeads(key->Forward(k));
-            Tensor<T> V = SplitHeads(value->Forward(v));
-
             Tensor<T> scores = MatMul(Q, K.Transpose(-2, -1)) / scale;
 
-            if (causal)
+            const size_t seq_q = scores.Shape()[scores.Rank() - 2];
+            const size_t seq_k = scores.Shape()[scores.Rank() - 1];
+
+            // A lone query masks nothing: it may attend to every cached key,
+            // itself included. Skipping the build saves an all-false mask per
+            // layer per decoded token.
+            if (causal && seq_q > 1)
             {
-                const size_t seq_q = scores.Shape()[scores.Rank() - 2];
-                const size_t seq_k = scores.Shape()[scores.Rank() - 1];
                 Tensor<bool> causal_mask({seq_q, seq_k}, false);
 
                 for (size_t i = 0; i < seq_q; ++i)
@@ -97,9 +105,34 @@ namespace transformer
             return output_proj->Forward(MergeHeads(context));
         }
 
-        Tensor<T> Forward(const Tensor<T> &input, const Tensor<bool> &mask = Tensor<bool>(), bool causal = false)
+        // Cross-attention: distinct query / key / value inputs, never cached.
+        Tensor<T> Forward(const Tensor<T>& q, const Tensor<T>& k, const Tensor<T>& v, const Tensor<bool>& mask = Tensor<bool>(), bool causal = false)
         {
-            return Forward(input, input, input, mask, causal);
+            return Atten(SplitHeads(query->Forward(q)),
+                         SplitHeads(key->Forward(k)),
+                         SplitHeads(value->Forward(v)), mask, causal);
+        }
+
+        // Self-attention. With a cache, `input` holds only the positions not yet
+        // seen -- the whole prompt on the first call, one token per call after --
+        // and `cache_len` says how many positions precede them.
+        Tensor<T> Forward(const Tensor<T> &input, KVLayer<T>* cache = nullptr, size_t cache_len = 0, const Tensor<bool> &mask = Tensor<bool>(), bool causal = false)
+        {
+            const size_t seq = input.Shape()[1];
+
+            Tensor<T> Q = SplitHeads(query->Forward(input));
+            Tensor<T> K = SplitHeads(key->Forward(input));
+            Tensor<T> V = SplitHeads(value->Forward(input));
+
+            if (cache)
+            {
+                CopyInto(cache->k.Slice(2, cache_len, seq), K);
+                CopyInto(cache->v.Slice(2, cache_len, seq), V);
+                K = cache->k.Slice(2, 0, cache_len + seq);
+                V = cache->v.Slice(2, 0, cache_len + seq);
+            }
+
+            return Atten(Q, K, V, mask, causal);
         }
 
         template <typename... Args>

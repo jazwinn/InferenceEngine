@@ -11,9 +11,16 @@
 #include "NeuralNet/Sequential.h"
 #include "NeuralNet/Activation.h"
 #include "NeuralNet/LayerNorm.h"
+#include "NeuralNet/Transformer/KVCache.h"
 
 namespace transformer
 {
+    using math::Tensor;
+    using nn::Module;
+    using nn::Linear;
+    using nn::LayerNorm;
+    using nn::Sequential;
+    using activation::GELU;
 
     template <typename T>
     class TransformerBlock : public Module<T>
@@ -33,9 +40,9 @@ namespace transformer
             this->RegisterSubmodule("mlp", mlp);
         }
 
-        Tensor<T> Forward(const Tensor<T> &input, const Tensor<bool> &mask = Tensor<bool>(), bool causal = false)
+        Tensor<T> Forward(const Tensor<T> &input, KVLayer<T>* cache = nullptr, size_t cache_len = 0, const Tensor<bool> &mask = Tensor<bool>(), bool causal = false)
         {
-            Tensor<T> output = input + attention->Forward (ln_1->Forward(input), mask, causal);
+            Tensor<T> output = input + attention->Forward(ln_1->Forward(input), cache, cache_len, mask, causal);
             output = output + mlp->Forward (ln_2->Forward (output));
 
             return output;
@@ -66,13 +73,23 @@ namespace transformer
             this->RegisterSubmodule("ln_f", ln_f);
         }
 
-        Tensor<T> Forward(const Tensor<T> &input, const Tensor<bool> &mask = Tensor<bool>(), bool causal = true)
+        Tensor<T> Forward(const Tensor<T> &input, KVCache<T>* cache = nullptr, const Tensor<bool> &mask = Tensor<bool>(), bool causal = true)
         {
+
+            const size_t seq       = input.Shape()[1];
+            const size_t cache_len = cache ? cache->Room(seq) : 0;
+            
             Tensor<T> output = input;
-            for (auto &block : blocks)
+            for (size_t i = 0; i < blocks.size(); ++i)
             {
-                output = block->Forward(output, mask, causal);
+                // Every layer appends at the SAME offset, so cache_len is read
+                // once above -- never re-read from the cache inside this loop.
+                KVLayer<T>* kv = cache ? &cache->Layer(i) : nullptr;
+
+                output = blocks[i]->Forward(output, kv, cache_len, mask, causal);
             }
+
+            if (cache) cache->Advance(seq);   // once per pass, after every layer
             return ln_f->Forward(output);
         }
 

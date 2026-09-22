@@ -772,6 +772,43 @@ namespace math {
     }
 
     template <typename T>
+    void CopyInto(Tensor<T> dst, const Tensor<T>& src)
+    {
+        if (dst.Shape() != src.Shape()) {
+            throw std::invalid_argument("CopyInto: shape mismatch.");
+        }
+        if (dst.Size() == 0) return;
+
+        const size_t n = dst.Rank();
+        const std::vector<size_t>& shape      = dst.Shape();
+        const std::vector<size_t>& dst_stride = dst.Strides();
+        const std::vector<size_t>& src_stride = src.Strides();
+
+        T* dst_data       = dst.Data();
+        const T* src_data = src.Data();
+
+        std::vector<size_t> index(n, 0);
+        size_t dst_offset = 0;
+        size_t src_offset = 0;
+
+        for (size_t i = 0; i < dst.Size(); ++i) {
+            dst_data[dst_offset] = src_data[src_offset];
+
+            for (size_t axis = n; axis-- > 0; ) {
+                ++index[axis];
+                dst_offset += dst_stride[axis];
+                src_offset += src_stride[axis];
+                if (index[axis] < shape[axis]) break;
+                index[axis]  = 0;
+                dst_offset  -= shape[axis] * dst_stride[axis];
+                src_offset  -= shape[axis] * src_stride[axis];
+            }
+        }
+    }
+
+
+
+    template <typename T>
     Tensor<T> Transpose(const Tensor<T>& tensor) {
         return tensor.Transpose();
     }

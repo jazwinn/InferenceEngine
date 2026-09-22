@@ -4,8 +4,10 @@
 
 namespace models::gpt2 {
 
-    using namespace transformer;
-    
+    using transformer::TransformerConfig;
+    using transformer::Activation;
+
+
     inline TransformerConfig Small() {
         TransformerConfig c;
         c.vocab_size = 50257; c.d_model = 768; c.num_layers = 12; c.num_heads = 12;

@@ -329,8 +329,8 @@ TEST(MultiHeadAttentionForward, WithoutBiasIsCausalToo) {
     Tensor<float> b = a.Clone();
     for (size_t d = 0; d < 8; ++d) b(0, 3, d) = -5.0f;
 
-    const Tensor<float> out_a = attn.Forward(a, Tensor<bool>(), true);
-    const Tensor<float> out_b = attn.Forward(b, Tensor<bool>(), true);
+    const Tensor<float> out_a = attn.Forward(a, nullptr, 0, Tensor<bool>(), true);
+    const Tensor<float> out_b = attn.Forward(b, nullptr, 0, Tensor<bool>(), true);
 
     for (size_t s = 0; s < 3; ++s)
         for (size_t d = 0; d < 8; ++d)
@@ -464,7 +464,7 @@ TEST(MultiHeadAttentionCausal, NoNaNOnAnyRow) {
     IotaFill(x);
 
     const Tensor<float> w = WeightsOf(attn, x, true);
-    const Tensor<float> out = attn.Forward(x, Tensor<bool>(), true);
+    const Tensor<float> out = attn.Forward(x, nullptr, 0, Tensor<bool>(), true);
 
     for (size_t h = 0; h < 2; ++h)
         for (size_t i = 0; i < 6; ++i)
@@ -487,8 +487,8 @@ TEST(MultiHeadAttentionCausal, EarlierOutputsIgnoreLaterInput) {
     Tensor<float> b = a.Clone();
     for (size_t d = 0; d < 8; ++d) b(0, 3, d) = -50.0f;
 
-    const Tensor<float> out_a = attn.Forward(a, Tensor<bool>(), true);
-    const Tensor<float> out_b = attn.Forward(b, Tensor<bool>(), true);
+    const Tensor<float> out_a = attn.Forward(a, nullptr, 0, Tensor<bool>(), true);
+    const Tensor<float> out_b = attn.Forward(b, nullptr, 0, Tensor<bool>(), true);
 
     for (size_t s = 0; s < 3; ++s)
         for (size_t d = 0; d < 8; ++d)
@@ -503,7 +503,7 @@ TEST(MultiHeadAttentionCausal, ChangesTheOutputRelativeToUnmasked) {
     IotaFill(x);
 
     const Tensor<float> plain = attn.Forward(x);
-    const Tensor<float> causal = attn.Forward(x, Tensor<bool>(), true);
+    const Tensor<float> causal = attn.Forward(x, nullptr, 0, Tensor<bool>(), true);
 
     bool differs = false;
     for (size_t s = 0; s < 4 && !differs; ++s)
@@ -523,7 +523,7 @@ TEST(MultiHeadAttentionMask, AMaskBroadcastsOverBatchAndHeads) {
     Tensor<bool> mask({4, 4}, false);
     for (size_t i = 0; i < 4; ++i) mask(i, 3) = true;   // block the last key
 
-    EXPECT_NO_THROW(attn.Forward(x, mask));
+    EXPECT_NO_THROW(attn.Forward(x, nullptr, 0, mask));
 }
 
 TEST(MultiHeadAttentionMask, MaskedKeysGetZeroWeight) {
@@ -553,7 +553,7 @@ TEST(MultiHeadAttentionMask, AnEmptyMaskIsIgnored) {
     Tensor<float> x({1, 4, 8});
     IotaFill(x);
 
-    const Tensor<float> withEmpty = attn.Forward(x, Tensor<bool>());
+    const Tensor<float> withEmpty = attn.Forward(x, nullptr, 0, Tensor<bool>());
     const Tensor<float> without = attn.Forward(x);
 
     for (size_t s = 0; s < 4; ++s)
@@ -580,7 +580,7 @@ TEST(MultiHeadAttentionQKV, SelfAttentionPassesMaskAndCausalThrough) {
     Tensor<bool> mask({4, 4}, false);
     for (size_t i = 1; i < 4; ++i) mask(i, 0) = true;   // query 0 keeps key 0, its only causal key
 
-    EXPECT_EQ(MaxAbsDiff(attn.Forward(x, mask, true), attn.Forward(x, x, x, mask, true)), 0.0);
+    EXPECT_EQ(MaxAbsDiff(attn.Forward(x, nullptr, 0, mask, true), attn.Forward(x, x, x, mask, true)), 0.0);
 }
 
 TEST(MultiHeadAttentionQKV, OutputTakesTheQueryLength) {
@@ -835,7 +835,7 @@ TEST(MultiHeadAttentionQKVCausal, MatchesTheTailOfFullSelfAttention) {
     Tensor<float> x({1, 5, 8});
     PhaseFill(x, 0.0);
 
-    const Tensor<float> full = attn.Forward(x, Tensor<bool>(), true);
+    const Tensor<float> full = attn.Forward(x, nullptr, 0, Tensor<bool>(), true);
     const Tensor<float> tail = attn.Forward(Positions(x, 3, 5), x, x, Tensor<bool>(), true);
 
     ASSERT_EQ(tail.Shape(), (std::vector<size_t>{1, 2, 8}));
@@ -851,7 +851,7 @@ TEST(MultiHeadAttentionQKVCausal, OneQueryAtATimeRebuildsTheSequence) {
     Tensor<float> x({1, 5, 8});
     PhaseFill(x, 0.0);
 
-    const Tensor<float> full = attn.Forward(x, Tensor<bool>(), true);
+    const Tensor<float> full = attn.Forward(x, nullptr, 0, Tensor<bool>(), true);
 
     for (size_t t = 0; t < 5; ++t) {
         const Tensor<float> prefix = Positions(x, 0, t + 1);

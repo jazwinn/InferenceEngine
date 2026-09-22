@@ -99,15 +99,15 @@ TEST(GPT2Forward, RejectsSequencesPastMaxSeqLen) {
     GPT2<float> model(TinyConfig());
     EXPECT_NO_THROW(model.Forward(Ids(1, 6)));
     EXPECT_THROW(model.Forward(Ids(1, 7)), std::invalid_argument);
-    EXPECT_THROW(model.Forward(Ids(1, 2), 5), std::invalid_argument);
+    EXPECT_THROW(model.Forward(Ids(1, 2), nullptr, 5), std::invalid_argument);
 }
 
 TEST(GPT2Forward, StartPosShiftsThePositions) {
     GPT2<float> model(TinyConfig());
     Seed(model);
 
-    const Tensor<float> a = model.Forward(Ids(1, 2), 0);
-    const Tensor<float> b = model.Forward(Ids(1, 2), 3);
+    const Tensor<float> a = model.Forward(Ids(1, 2), nullptr, 0);
+    const Tensor<float> b = model.Forward(Ids(1, 2), nullptr, 3);
 
     float largest = 0.0f;
     for (size_t i = 0; i < a.Size(); ++i) largest = std::max(largest, std::fabs(a.Data()[i] - b.Data()[i]));

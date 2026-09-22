@@ -222,10 +222,10 @@ TEST(TransformerBlockForward, IsPreNormWithTwoResiduals) {
     SeedParameters(block);
     const Tensor<float> x = Wave<float>({2, 4, 16});
 
-    const Tensor<float> h = x + block.attention->Forward(block.ln_1->Forward(x), Tensor<bool>(), true);
+    const Tensor<float> h = x + block.attention->Forward(block.ln_1->Forward(x), nullptr, 0, Tensor<bool>(), true);
     const Tensor<float> expected = h + block.mlp->Forward(block.ln_2->Forward(h));
 
-    EXPECT_LT(MaxAbsDiff(block.Forward(x, Tensor<bool>(), true), expected), kTol);
+    EXPECT_LT(MaxAbsDiff(block.Forward(x, nullptr, 0, Tensor<bool>(), true), expected), kTol);
 }
 
 TEST(TransformerBlockForward, IsNotPostNorm) {
@@ -268,7 +268,7 @@ TEST(TransformerBlockForward, DefaultsToBidirectional) {
     SeedParameters(block);
     const Tensor<float> x = Wave<float>({1, 4, 16});
 
-    EXPECT_EQ(MaxAbsDiff(block.Forward(x), block.Forward(x, Tensor<bool>(), false)), 0.0);
+    EXPECT_EQ(MaxAbsDiff(block.Forward(x), block.Forward(x, nullptr, 0, Tensor<bool>(), false)), 0.0);
 }
 
 TEST(TransformerBlockForward, CausalOutputsIgnoreLaterTokens) {
@@ -278,8 +278,8 @@ TEST(TransformerBlockForward, CausalOutputsIgnoreLaterTokens) {
     Tensor<float> b = a.Clone();
     for (size_t d = 0; d < 16; ++d) b(0, 3, d) = 5.0f;
 
-    const Tensor<float> out_a = block.Forward(a, Tensor<bool>(), true);
-    const Tensor<float> out_b = block.Forward(b, Tensor<bool>(), true);
+    const Tensor<float> out_a = block.Forward(a, nullptr, 0, Tensor<bool>(), true);
+    const Tensor<float> out_b = block.Forward(b, nullptr, 0, Tensor<bool>(), true);
 
     for (size_t s = 0; s < 3; ++s) EXPECT_LT(PositionDiff(out_a, out_b, s), 1e-5) << "position " << s;
     EXPECT_GT(PositionDiff(out_a, out_b, 3), 1e-3);
@@ -304,8 +304,8 @@ TEST(TransformerBlockForward, AMaskedKeyHasNoInfluence) {
     Tensor<bool> mask({4, 4}, false);
     for (size_t i = 0; i < 4; ++i) mask(i, 3) = true;
 
-    const Tensor<float> out_a = block.Forward(a, mask);
-    const Tensor<float> out_b = block.Forward(b, mask);
+    const Tensor<float> out_a = block.Forward(a, nullptr, 0, mask);
+    const Tensor<float> out_b = block.Forward(b, nullptr, 0, mask);
 
     for (size_t s = 0; s < 3; ++s) EXPECT_LT(PositionDiff(out_a, out_b, s), 1e-5) << "position " << s;
 }
@@ -346,7 +346,7 @@ TEST(TransformerBlockForward, WorksWithDouble) {
     TransformerBlock<double> block(16, 4, 64);
     SeedParameters(block);
 
-    const Tensor<double> out = block.Forward(Wave<double>({1, 3, 16}), Tensor<bool>(), true);
+    const Tensor<double> out = block.Forward(Wave<double>({1, 3, 16}), nullptr, 0, Tensor<bool>(), true);
 
     EXPECT_EQ(out.Shape(), (std::vector<size_t>{1, 3, 16}));
     for (size_t i = 0; i < out.Size(); ++i) EXPECT_FALSE(std::isnan(out.Contiguous().Data()[i]));
@@ -457,7 +457,7 @@ TEST(TransformerForward, ChainsEveryBlockThenTheFinalNorm) {
     const Tensor<float> x = Wave<float>({2, 4, 16});
 
     Tensor<float> h = x;
-    for (const auto& block : model.blocks) h = block->Forward(h, Tensor<bool>(), true);
+    for (const auto& block : model.blocks) h = block->Forward(h, nullptr, 0, Tensor<bool>(), true);
     const Tensor<float> expected = model.ln_f->Forward(h);
 
     EXPECT_LT(MaxAbsDiff(model.Forward(x), expected), kTol);
@@ -504,7 +504,7 @@ TEST(TransformerForward, CanRunBidirectionally) {
     Tensor<float> b = a.Clone();
     for (size_t d = 0; d < 16; ++d) b(0, 3, d) = 5.0f;
 
-    EXPECT_GT(PositionDiff(model.Forward(a, Tensor<bool>(), false), model.Forward(b, Tensor<bool>(), false), 0), 1e-4);
+    EXPECT_GT(PositionDiff(model.Forward(a, nullptr, Tensor<bool>(), false), model.Forward(b, nullptr, Tensor<bool>(), false), 0), 1e-4);
 }
 
 TEST(TransformerForward, PassesTheMaskToEveryBlock) {
@@ -517,8 +517,8 @@ TEST(TransformerForward, PassesTheMaskToEveryBlock) {
     for (size_t i = 0; i < 4; ++i) mask(i, 2) = true;
     mask(2, 2) = false;   // position 2 still sees itself, so its row is not all masked
 
-    const Tensor<float> out_a = model.Forward(a, mask, false);
-    const Tensor<float> out_b = model.Forward(b, mask, false);
+    const Tensor<float> out_a = model.Forward(a, nullptr, mask, false);
+    const Tensor<float> out_b = model.Forward(b, nullptr, mask, false);
 
     for (size_t s : {size_t{0}, size_t{1}, size_t{3}})
         EXPECT_LT(PositionDiff(out_a, out_b, s), 1e-5) << "position " << s;
