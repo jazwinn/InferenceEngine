@@ -73,10 +73,22 @@ Place a GPT-2 checkpoint (`config.json`, `model.safetensors`, `vocab.json`, `mer
 - Chat templates for instruct models
 
 **Generation**
-- Sampling: temperature, top-k, top-p, repetition penalty
+
+*Decoding* — a composable logit pipeline (penalties → temperature → truncation → sample), so each stage stays independent and testable:
+- Greedy search — argmax each step. Implemented, and worth keeping behind a flag: being deterministic, it is the only decoding mode that gives bit-exact regression tests. It is also degenerate on its own, falling into repetition loops because the continuation becomes a fixed function of the prefix.
+- Temperature — divide logits by `T` before the softmax; `T < 1` sharpens, `T > 1` flattens
+- Top-k sampling — keep the k highest-scoring tokens, renormalise, sample
+- Top-p (nucleus) sampling — keep the smallest set whose cumulative probability exceeds p, so the candidate count adapts to how confident the model is
+- Min-p sampling — keep tokens within a ratio of the top probability; cheaper than top-p and needs no sort
+- Repetition, frequency and presence penalties — discount tokens already generated
+- Beam search with length normalisation — for tasks where the likeliest sequence is actually wanted
+- Contrastive search — a deterministic alternative to greedy that penalises tokens too similar to the existing context
+- Seeded RNG so sampled runs stay reproducible
+
+*Other*
 - Stop sequences and streaming output
 - Batched generation
-- Prompt-processing/decode split (prefill vs decode)
+- Speculative decoding — draft with a small model, verify in one pass with the large one
 
 **Correctness and tooling**
 - Reference-parity harness: compare per-layer activations and logits against Hugging Face
