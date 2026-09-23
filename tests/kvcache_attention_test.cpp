@@ -21,16 +21,12 @@ using transformer::TransformerBlock;
 using transformer::TransformerConfig;
 
 namespace {
-
 constexpr size_t kDModel  = 8;
 constexpr size_t kHeads   = 2;
 constexpr size_t kHeadDim = kDModel / kHeads;
 constexpr size_t kMaxSeq  = 6;
-constexpr size_t kLayers  = 3;   // > 2 so a per-layer Advance bug is unmistakable
+constexpr size_t kLayers  = 3;
 
-// Cached and uncached decoding run the same operations over the same values in
-// the same order, so the results should be bit-identical. The bound is a few
-// ULP rather than exactly zero only to stay robust to FMA contraction.
 constexpr double kExact = 1e-6;
 
 TransformerConfig TinyConfig() {
@@ -44,8 +40,6 @@ TransformerConfig TinyConfig() {
     return c;
 }
 
-// Every Linear starts at zero, which makes attention output all zeros and every
-// equivalence assertion below hold vacuously. Seed deterministically instead.
 template <typename T>
 void Seed(Module<T>& module) {
     int k = 0;
@@ -65,8 +59,6 @@ Tensor<T> Wave(const std::vector<size_t>& shape, double phase = 0.0) {
     return t;
 }
 
-// Positions [first, first + count) of a {B, S, D} tensor, as its own tensor --
-// the prompt slice or the single token a decode step feeds in.
 Tensor<float> Window(const Tensor<float>& x, size_t first, size_t count) {
     Tensor<float> out({x.Shape()[0], count, x.Shape()[2]});
     for (size_t b = 0; b < x.Shape()[0]; ++b)
@@ -75,7 +67,6 @@ Tensor<float> Window(const Tensor<float>& x, size_t first, size_t count) {
     return out;
 }
 
-// Worst difference between position `sa` of `a` and position `sb` of `b`.
 double RowDiff(const Tensor<float>& a, size_t sa, const Tensor<float>& b, size_t sb) {
     double worst = 0.0;
     for (size_t bt = 0; bt < a.Shape()[0]; ++bt)
@@ -100,9 +91,7 @@ size_t NonZeroCount(const Tensor<float>& t, size_t position) {
     return count;
 }
 
-}  // namespace
-
-// --- MultiHeadAttention: the cache is optional -------------------------------
+}
 
 TEST(KVCacheAttention, ANullCacheLeavesTheResultUnchanged) {
     MultiHeadAttention<float> attn(kDModel, kHeads);
@@ -127,9 +116,6 @@ TEST(KVCacheAttention, PassingACacheDoesNotChangeTheOutputShape) {
     EXPECT_EQ(out.Shape(), (std::vector<size_t>{2, 3, kDModel}));
 }
 
-// --- MultiHeadAttention: equivalence ----------------------------------------
-
-// The whole point of the cache. If this fails, nothing else matters.
 TEST(KVCacheAttention, DecodingOneTokenAtATimeMatchesTheFullSequence) {
     MultiHeadAttention<float> attn(kDModel, kHeads);
     Seed(attn);
@@ -161,7 +147,6 @@ TEST(KVCacheAttention, PrefillThenDecodeMatchesTheFullSequence) {
 
     KVCache<float> cache(1, 1, kHeads, kMaxSeq, kHeadDim);
 
-    // Prefill and decode are the same call: only `seq` differs.
     const Tensor<float> prefill =
         attn.Forward(Window(x, 0, kPrompt), &cache.Layer(0), cache.Room(kPrompt),
                      Tensor<bool>(), true);
@@ -188,8 +173,6 @@ TEST(KVCacheAttention, TwoTokensAtATimeMatchesTheFullSequence) {
 
     KVCache<float> cache(1, 1, kHeads, kMaxSeq, kHeadDim);
 
-    // A chunk of 2 exercises the causal mask with 1 < seq_q < seq_k, which
-    // neither a full pass nor a single-token step reaches.
     for (size_t s = 0; s < 4; s += 2) {
         const Tensor<float> out =
             attn.Forward(Window(x, s, 2), &cache.Layer(0), cache.Room(2), Tensor<bool>(), true);
@@ -199,8 +182,6 @@ TEST(KVCacheAttention, TwoTokensAtATimeMatchesTheFullSequence) {
         EXPECT_LT(RowDiff(out, 1, reference, s + 1), kExact) << "position " << s + 1;
     }
 }
-
-// --- MultiHeadAttention: what lands in the cache -----------------------------
 
 TEST(KVCacheAttention, CacheHoldsExactlyTheProjectedKeysAndValues) {
     MultiHeadAttention<float> attn(kDModel, kHeads);
@@ -231,7 +212,6 @@ TEST(KVCacheAttention, KeysAndValuesGoToSeparateBuffers) {
     KVCache<float> cache(1, 1, kHeads, kMaxSeq, kHeadDim);
     attn.Forward(Wave<float>({1, 2, kDModel}), &cache.Layer(0), 0, Tensor<bool>(), true);
 
-    // Swapping k and v in the append would make these identical.
     double worst = 0.0;
     for (size_t h = 0; h < kHeads; ++h)
         for (size_t s = 0; s < 2; ++s)
@@ -276,8 +256,6 @@ TEST(KVCacheAttention, AppendingAtAnOffsetDoesNotDisturbEarlierPositions) {
                     << "position " << s << " was overwritten by a later append";
 }
 
-// --- TransformerBlock --------------------------------------------------------
-
 TEST(KVCacheBlock, DecodingOneTokenAtATimeMatchesTheFullSequence) {
     TransformerBlock<float> block(kDModel, kHeads, 16);
     Seed(block);
@@ -305,8 +283,6 @@ TEST(KVCacheBlock, ANullCacheLeavesTheResultUnchanged) {
                          block.Forward(x, nullptr, 0, Tensor<bool>(), true)),
               0.0);
 }
-
-// --- Transformer: the multi-layer bookkeeping --------------------------------
 
 TEST(KVCacheTransformer, DecodingOneTokenAtATimeMatchesTheFullSequence) {
     const TransformerConfig config = TinyConfig();
@@ -364,8 +340,6 @@ TEST(KVCacheTransformer, OnePassAdvancesTheLengthOnceNotOncePerLayer) {
     EXPECT_EQ(cache.Length(), 3u);
 }
 
-// Every layer must append at the SAME offset. If the length were advanced
-// inside the block loop, layer i would write at position start + i.
 TEST(KVCacheTransformer, EveryLayerAppendsAtTheSameOffset) {
     const TransformerConfig config = TinyConfig();
     Transformer<float> model(config);
@@ -396,7 +370,6 @@ TEST(KVCacheTransformer, LayersHoldDifferentKeys) {
                          config.HeadDim());
     model.Forward(Wave<float>({1, 2, kDModel}), &cache, Tensor<bool>(), true);
 
-    // Passing the same slot to every block would make these identical.
     double worst = 0.0;
     for (size_t h = 0; h < config.KVHeads(); ++h)
         for (size_t d = 0; d < config.HeadDim(); ++d)
@@ -450,13 +423,10 @@ TEST(KVCacheTransformer, ANullCacheLeavesTheResultUnchanged) {
               0.0);
 }
 
-// --- GPT2: the position encoding is the other thing a cache can break --------
-
 namespace {
-
 TransformerConfig TinyGPT2Config() {
     TransformerConfig c = TinyConfig();
-    c.position = transformer::PositionEncoding::Learned;   // so wpe exists
+    c.position = transformer::PositionEncoding::Learned;
     return c;
 }
 
@@ -473,10 +443,8 @@ int64_t ArgMax(const Tensor<float>& logits, size_t position, size_t vocab) {
     return best;
 }
 
-}  // namespace
+}
 
-// Positions come from the cache length. If they were left at 0, every decoded
-// token would be given wpe[0] and this would diverge from position 1 onward.
 TEST(KVCacheGPT2, DecodingOneTokenAtATimeMatchesTheFullSequence) {
     const TransformerConfig config = TinyGPT2Config();
     GPT2<float> model(config);
@@ -525,8 +493,6 @@ TEST(KVCacheGPT2, PrefillThenDecodeMatchesTheFullSequence) {
     }
 }
 
-// Guards the test above: if wpe were all zeros, position-blind decoding would
-// pass vacuously. Two identical tokens at different positions must differ.
 TEST(KVCacheGPT2, PositionActuallyChangesTheLogits) {
     const TransformerConfig config = TinyGPT2Config();
     GPT2<float> model(config);
@@ -541,8 +507,6 @@ TEST(KVCacheGPT2, PositionActuallyChangesTheLogits) {
         << "the same token at positions 0 and 1 should not give identical logits";
 }
 
-// The end-to-end claim: greedy decoding with a cache picks the same tokens as
-// greedy decoding that re-runs the whole prefix every step.
 TEST(KVCacheGPT2, GreedyDecodingPicksTheSameTokensWithAndWithoutACache) {
     const TransformerConfig config = TinyGPT2Config();
     GPT2<float> model(config);
@@ -554,14 +518,12 @@ TEST(KVCacheGPT2, GreedyDecodingPicksTheSameTokensWithAndWithoutACache) {
     std::vector<int64_t> slow{Ids(prompt_len)(0, 0), Ids(prompt_len)(0, 1)};
     std::vector<int64_t> fast = slow;
 
-    // Uncached: rebuild the whole prefix every step.
     for (size_t i = 0; i < steps; ++i) {
         Tensor<int64_t> all({1, slow.size()});
         for (size_t s = 0; s < slow.size(); ++s) all(0, s) = slow[s];
         slow.push_back(ArgMax(model.Forward(all, nullptr, 0), slow.size() - 1, config.vocab_size));
     }
 
-    // Cached: prompt once, then one token per step.
     KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
                          config.HeadDim());
     Tensor<int64_t> prompt({1, prompt_len});

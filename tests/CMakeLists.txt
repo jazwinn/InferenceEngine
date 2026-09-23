@@ -25,3 +25,11 @@ target_link_libraries(serialize_tests PRIVATE
     GTest::gtest_main
 )
 gtest_discover_tests(serialize_tests)
+
+add_executable(generation_tests sampler_test.cpp temperature_test.cpp)
+target_link_libraries(generation_tests PRIVATE
+    InferenceEngine::Generation
+    GTest::gtest
+    GTest::gtest_main
+)
+gtest_discover_tests(generation_tests)

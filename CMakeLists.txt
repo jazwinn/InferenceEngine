@@ -20,6 +20,7 @@ else()
     add_compile_options(-Wall -Wextra)
 endif()
 
+add_subdirectory(Generation)
 add_subdirectory(Math)
 add_subdirectory(NeuralNet)
 add_subdirectory(Reflection)
@@ -27,6 +28,7 @@ add_subdirectory(Serialize)
 
 add_executable(inference main.cpp)
 target_link_libraries(inference PRIVATE
+    InferenceEngine::Generation
     InferenceEngine::NeuralNet
     InferenceEngine::Serialize
 )
