@@ -2,14 +2,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 #include "Math/Tensor.h"
 #include "Module.h"
+#include "Linear.h"
 
 namespace activation {
 
   using math::Tensor;
   using nn::Module;
+  using nn::Linear;
 
   template <typename T = float>
   class ReLU : public Module<T> {
@@ -56,6 +59,44 @@ namespace activation {
 
       return output;
     }
+  };
+
+  template <typename T = float>
+  class SiLU : public Module<T> {
+  public:
+    Tensor<T> Forward(const Tensor<T> &input) {
+      Tensor<T> output = input.Clone();
+
+      std::for_each(output.Data(), output.Data() + output.Size(),
+                    [](T &value) { value = value / (T(1) + std::exp(-value)); });
+
+      return output;
+    }
+  };
+
+  template <typename T = float>
+  class SwiGLU : public Module<T> {
+  public:
+    SwiGLU(size_t d_model, size_t d_ff)
+        : m_gate_proj(std::make_shared<Linear<T>>(d_model, d_ff, false)),
+          m_up_proj(std::make_shared<Linear<T>>(d_model, d_ff, false)),
+          m_down_proj(std::make_shared<Linear<T>>(d_ff, d_model, false)) {
+      this->RegisterSubmodule("gate_proj", m_gate_proj);
+      this->RegisterSubmodule("up_proj", m_up_proj);
+      this->RegisterSubmodule("down_proj", m_down_proj);
+    }
+
+    Tensor<T> Forward(const Tensor<T> &input) {
+      Tensor<T> gate = SiLU<T>().Forward(m_gate_proj->Forward(input));
+      Tensor<T> up = m_up_proj->Forward(input);
+
+      return m_down_proj->Forward(gate * up);
+    }
+
+  private:
+    std::shared_ptr<Linear<T>> m_gate_proj;
+    std::shared_ptr<Linear<T>> m_up_proj;
+    std::shared_ptr<Linear<T>> m_down_proj;
   };
 
   template <typename T = float>
@@ -124,4 +165,7 @@ namespace activation {
   private:
     long long m_axis;
   };
-} // namespace activation
+
+
+
+} 

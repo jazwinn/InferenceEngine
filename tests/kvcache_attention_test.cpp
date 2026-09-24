@@ -192,8 +192,8 @@ TEST(KVCacheAttention, CacheHoldsExactlyTheProjectedKeysAndValues) {
     attn.Forward(x, &cache.Layer(0), 0, Tensor<bool>(), true);
     cache.Advance(3);
 
-    const Tensor<float> K = attn.SplitHeads(attn.key->Forward(x));
-    const Tensor<float> V = attn.SplitHeads(attn.value->Forward(x));
+    const Tensor<float> K = transformer::SplitHeads(attn.key->Forward(x), attn.num_heads, attn.head_dim);
+    const Tensor<float> V = transformer::SplitHeads(attn.value->Forward(x), attn.num_heads, attn.head_dim);
 
     for (size_t h = 0; h < kHeads; ++h)
         for (size_t s = 0; s < 3; ++s)

@@ -6,11 +6,14 @@
 #include <stdexcept>
 #include <vector>
 
+
 #include "Math/Tensor.h"
 #include "NeuralNet/Module.h"
 #include "NeuralNet/Linear.h"
 #include "NeuralNet/Activation.h"
 #include "NeuralNet/Transformer/KVCache.h"
+#include "NeuralNet/Transformer/AttentionOps.h"
+
 
 namespace transformer
 {
@@ -23,14 +26,14 @@ namespace transformer
     using activation::Softmax;
 
     template <typename T = float>
-    class MultiHeadAttention : public nn::Module<T>
+    class MultiHeadAttention : public Module<T>
     {
     public:
         MultiHeadAttention(size_t d_model, size_t num_heads, bool use_bias = true) : 
         d_model(d_model),
         num_heads(num_heads),
         head_dim(ValidatedHeadDim(d_model, num_heads)),
-        scale(std::sqrt(static_cast<T>(head_dim))),
+        scale(1/std::sqrt(static_cast<T>(head_dim))),
         query(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
         key(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
         value(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
@@ -43,86 +46,24 @@ namespace transformer
             this->RegisterSubmodule("output_proj", output_proj);
         }
 
-        static size_t ValidatedHeadDim(size_t d_model, size_t num_heads)
-        {
-            if (num_heads == 0)
-            {
-                throw std::invalid_argument("MultiHeadAttention: num_heads must be greater than zero.");
-            }
-            if (d_model % num_heads != 0)
-            {
-                throw std::invalid_argument("MultiHeadAttention: d_model must be divisible by num_heads.");
-            }
-            return d_model / num_heads;
-        }
-
-        Tensor<T> SplitHeads(const Tensor<T> &x)
-        {
-            std::vector<size_t> new_shape = {x.Shape()[0], x.Shape()[1], num_heads, head_dim};
-            return x.Reshape(new_shape).Transpose(1, 2).Contiguous(); // (batch_size, num_heads, seq_length, head_dim)
-        }
-
-        Tensor<T> MergeHeads(const Tensor<T> &x)
-        {
-            Tensor<T> transposed = x.Transpose(1, 2);                                         // (batch_size, seq_length, num_heads, head_dim)
-            return transposed.Reshape(transposed.Shape()[0], transposed.Shape()[1], d_model); // (batch_size, seq_length, d_model)
-        }
-
-        // Q, K and V arrive already projected and split into heads. K and V may be
-        // cache views, so they can be longer than Q and non-contiguous; MatMul
-        // reads them through their strides either way.
-        Tensor<T> Atten(const Tensor<T>& Q, const Tensor<T>& K, const Tensor<T>& V, const Tensor<bool>& mask = Tensor<bool>(), bool causal = false)
-        {
-            Tensor<T> scores = MatMul(Q, K.Transpose(-2, -1)) / scale;
-
-            const size_t seq_q = scores.Shape()[scores.Rank() - 2];
-            const size_t seq_k = scores.Shape()[scores.Rank() - 1];
-
-            // A lone query masks nothing: it may attend to every cached key,
-            // itself included. Skipping the build saves an all-false mask per
-            // layer per decoded token.
-            if (causal && seq_q > 1)
-            {
-                Tensor<bool> causal_mask({seq_q, seq_k}, false);
-
-                for (size_t i = 0; i < seq_q; ++i)
-                {
-                    for (size_t j = i + 1 + (seq_k - seq_q); j < seq_k; ++j)
-                    {
-                        causal_mask(i, j) = true;
-                    }
-                }
-                scores = scores.MaskedFill(causal_mask, -std::numeric_limits<T>::infinity());
-            }
-
-            if (mask.Size() > 0)
-            {
-                scores = scores.MaskedFill(mask, -std::numeric_limits<T>::infinity());
-            }
-
-            Tensor<T> attention_weights = Softmax<T>(-1).Forward(scores);
-            Tensor<T> context = MatMul(attention_weights, V);
-            return output_proj->Forward(MergeHeads(context));
-        }
-
-        // Cross-attention: distinct query / key / value inputs, never cached.
         Tensor<T> Forward(const Tensor<T>& q, const Tensor<T>& k, const Tensor<T>& v, const Tensor<bool>& mask = Tensor<bool>(), bool causal = false)
         {
-            return Atten(SplitHeads(query->Forward(q)),
-                         SplitHeads(key->Forward(k)),
-                         SplitHeads(value->Forward(v)), mask, causal);
+            Tensor<T> Q = SplitHeads(query->Forward(q), num_heads, head_dim);
+            Tensor<T> K = SplitHeads(key->Forward(k), num_heads, head_dim);
+            Tensor<T> V = SplitHeads(value->Forward(v), num_heads, head_dim);
+
+
+            return output_proj->Forward(MergeHeads(SDPA(Q,K,V, mask, causal, scale), d_model));
         }
 
-        // Self-attention. With a cache, `input` holds only the positions not yet
-        // seen -- the whole prompt on the first call, one token per call after --
-        // and `cache_len` says how many positions precede them.
+
         Tensor<T> Forward(const Tensor<T> &input, KVLayer<T>* cache = nullptr, size_t cache_len = 0, const Tensor<bool> &mask = Tensor<bool>(), bool causal = false)
         {
             const size_t seq = input.Shape()[1];
 
-            Tensor<T> Q = SplitHeads(query->Forward(input));
-            Tensor<T> K = SplitHeads(key->Forward(input));
-            Tensor<T> V = SplitHeads(value->Forward(input));
+            Tensor<T> Q = SplitHeads(query->Forward(input), num_heads, head_dim);
+            Tensor<T> K = SplitHeads(key->Forward(input), num_heads, head_dim);
+            Tensor<T> V = SplitHeads(value->Forward(input), num_heads, head_dim);
 
             if (cache)
             {
@@ -132,7 +73,7 @@ namespace transformer
                 V = cache->v.Slice(2, 0, cache_len + seq);
             }
 
-            return Atten(Q, K, V, mask, causal);
+            return output_proj->Forward(MergeHeads(SDPA(Q, K, V, mask, causal, scale), d_model));
         }
 
         template <typename... Args>
@@ -141,8 +82,6 @@ namespace transformer
             return Forward(input, args...);
         }
 
-        // Declared before the projections so head_dim is validated first:
-        // members are initialized in declaration order, not initializer-list order.
         size_t d_model;
         size_t num_heads;
         size_t head_dim;

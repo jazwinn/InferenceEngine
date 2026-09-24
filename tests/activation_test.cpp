@@ -7,12 +7,15 @@
 #include <cmath>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 using activation::GELU;
 using activation::ReLU;
 using activation::Sigmoid;
+using activation::SiLU;
 using activation::Softmax;
+using activation::SwiGLU;
 using activation::Tanh;
 using math::Tensor;
 using nn::Module;
@@ -28,6 +31,24 @@ Tensor<float> RowVector(std::initializer_list<float> values) {
         t(0, j++) = v;
     }
     return t;
+}
+
+float Silu(float x) { return x / (1.0f + std::exp(-x)); }
+
+std::shared_ptr<Tensor<float>> NamedWeight(const Module<float> &module, const std::string &name) {
+    for (const auto &param : module.NamedParameters()) {
+        if (param.name == name) return param.tensor;
+    }
+    return nullptr;
+}
+
+void SetMatrix(Tensor<float> &w, std::initializer_list<std::initializer_list<float>> rows) {
+    size_t i = 0;
+    for (const auto &row : rows) {
+        size_t j = 0;
+        for (float v : row) w(i, j++) = v;
+        ++i;
+    }
 }
 
 }  // namespace
@@ -338,6 +359,250 @@ TEST(GELUForward, WorksWithDouble) {
 
 TEST(GELUModule, HasNoParameters) {
     EXPECT_TRUE(GELU<float>().Parameters().empty());
+}
+
+// --- SiLU -------------------------------------------------------------------
+
+TEST(SiLUForward, KnownValues) {
+    SiLU<float> silu;
+    const Tensor<float> in = RowVector({-3.0f, -2.0f, -1.0f, 0.0f, 0.5f, 1.0f, 2.0f, 3.0f});
+
+    const Tensor<float> out = silu.Forward(in);
+
+    EXPECT_NEAR(out(0, 0), -0.1422776f, kTol);
+    EXPECT_NEAR(out(0, 1), -0.2384058f, kTol);
+    EXPECT_NEAR(out(0, 2), -0.2689414f, kTol);
+    EXPECT_NEAR(out(0, 3), 0.0f, kTol);
+    EXPECT_NEAR(out(0, 4), 0.3112297f, kTol);
+    EXPECT_NEAR(out(0, 5), 0.7310586f, kTol);
+    EXPECT_NEAR(out(0, 6), 1.7615942f, kTol);
+    EXPECT_NEAR(out(0, 7), 2.8577223f, kTol);
+}
+
+TEST(SiLUForward, EqualsInputTimesSigmoid) {
+    SiLU<float> silu;
+    Sigmoid<float> sigmoid;
+    Tensor<float> in({1, 41});
+    for (size_t j = 0; j < 41; ++j) in(0, j) = -4.0f + 0.2f * static_cast<float>(j);
+
+    const Tensor<float> out = silu.Forward(in);
+    const Tensor<float> sig = sigmoid.Forward(in);
+
+    for (size_t j = 0; j < 41; ++j)
+        EXPECT_NEAR(out(0, j), in(0, j) * sig(0, j), kTol) << "x = " << in(0, j);
+}
+
+TEST(SiLUForward, DifferenceWithItsMirrorIsTheInput) {
+    SiLU<float> silu;
+    const std::vector<float> xs = {-4.0f, -1.3f, -0.2f, 0.0f, 0.7f, 2.5f, 6.0f};
+    Tensor<float> pos({1, xs.size()});
+    Tensor<float> neg({1, xs.size()});
+    for (size_t j = 0; j < xs.size(); ++j) {
+        pos(0, j) = xs[j];
+        neg(0, j) = -xs[j];
+    }
+
+    const Tensor<float> a = silu.Forward(pos);
+    const Tensor<float> b = silu.Forward(neg);
+
+    for (size_t j = 0; j < xs.size(); ++j)
+        EXPECT_NEAR(a(0, j) - b(0, j), xs[j], kTol) << "x = " << xs[j];
+}
+
+TEST(SiLUForward, NeverDipsBelowItsMinimum) {
+    SiLU<float> silu;
+    Tensor<float> in({1, 201});
+    for (size_t j = 0; j < 201; ++j) in(0, j) = -5.0f + 0.05f * static_cast<float>(j);
+
+    const Tensor<float> out = silu.Forward(in);
+
+    float lowest = out(0, 0);
+    for (size_t j = 1; j < 201; ++j) lowest = std::min(lowest, out(0, j));
+    EXPECT_NEAR(lowest, -0.2784645f, 1e-3f);
+}
+
+TEST(SiLUForward, SaturatesWithoutNaN) {
+    SiLU<float> silu;
+    const Tensor<float> in = RowVector({-100.0f, -20.0f, 20.0f, 100.0f});
+
+    const Tensor<float> out = silu.Forward(in);
+
+    for (size_t j = 0; j < 4; ++j) ASSERT_FALSE(std::isnan(out(0, j))) << "at " << j;
+    EXPECT_NEAR(out(0, 0), 0.0f, kTol);
+    EXPECT_NEAR(out(0, 1), 0.0f, kTol);
+    EXPECT_FLOAT_EQ(out(0, 2), 20.0f);
+    EXPECT_FLOAT_EQ(out(0, 3), 100.0f);
+}
+
+TEST(SiLUForward, PreservesShapeAndLeavesTheInputUntouched) {
+    SiLU<float> silu;
+    const Tensor<float> in({2, 3, 4}, 2.0f);
+
+    const Tensor<float> out = silu.Forward(in);
+
+    EXPECT_EQ(out.Shape(), (std::vector<size_t>{2, 3, 4}));
+    EXPECT_NEAR(out(1, 2, 3), 1.7615942f, kTol);
+    EXPECT_FLOAT_EQ(in(1, 2, 3), 2.0f);
+    EXPECT_FALSE(out.SharesStorage(in));
+}
+
+TEST(SiLUForward, HandlesANonContiguousInput) {
+    SiLU<float> silu;
+    Tensor<float> source({2, 3});
+    source(0, 0) = -1.0f; source(0, 1) = 0.5f;  source(0, 2) = 3.0f;
+    source(1, 0) = 1.0f;  source(1, 1) = -3.0f; source(1, 2) = 0.0f;
+
+    const Tensor<float> view = source.Transpose();
+    ASSERT_FALSE(view.IsContiguous());
+
+    const Tensor<float> out = silu.Forward(view);
+
+    ASSERT_EQ(out.Shape(), (std::vector<size_t>{3, 2}));
+    for (size_t i = 0; i < 3; ++i)
+        for (size_t j = 0; j < 2; ++j)
+            EXPECT_NEAR(out(i, j), Silu(view(i, j)), kTol) << "at (" << i << ", " << j << ")";
+}
+
+TEST(SiLUForward, WorksWithDouble) {
+    SiLU<double> silu;
+    Tensor<double> in({1, 2});
+    in(0, 0) = 1.0;
+    in(0, 1) = -1.0;
+
+    const Tensor<double> out = silu.Forward(in);
+
+    EXPECT_NEAR(out(0, 0), 0.7310585786300049, 1e-12);
+    EXPECT_NEAR(out(0, 1), -0.2689414213699951, 1e-12);
+}
+
+TEST(SiLUModule, HasNoParameters) {
+    EXPECT_TRUE(SiLU<float>().Parameters().empty());
+}
+
+// --- SwiGLU -----------------------------------------------------------------
+
+TEST(SwiGLUModule, RegistersThreeBiasFreeProjections) {
+    SwiGLU<float> swiglu(4, 6);
+
+    EXPECT_EQ(swiglu.Parameters().size(), 3u);
+
+    const auto gate = NamedWeight(swiglu, "gate_proj.weight");
+    const auto up = NamedWeight(swiglu, "up_proj.weight");
+    const auto down = NamedWeight(swiglu, "down_proj.weight");
+    ASSERT_NE(gate, nullptr);
+    ASSERT_NE(up, nullptr);
+    ASSERT_NE(down, nullptr);
+
+    EXPECT_EQ(gate->Shape(), (std::vector<size_t>{6, 4}));
+    EXPECT_EQ(up->Shape(), (std::vector<size_t>{6, 4}));
+    EXPECT_EQ(down->Shape(), (std::vector<size_t>{4, 6}));
+}
+
+TEST(SwiGLUModule, GateAndUpAreDistinctTensors) {
+    SwiGLU<float> swiglu(2, 3);
+
+    EXPECT_NE(NamedWeight(swiglu, "gate_proj.weight"), NamedWeight(swiglu, "up_proj.weight"));
+}
+
+TEST(SwiGLUForward, IdentityWeightsGiveSiluTimesInput) {
+    SwiGLU<float> swiglu(2, 2);
+    SetMatrix(*NamedWeight(swiglu, "gate_proj.weight"), {{1, 0}, {0, 1}});
+    SetMatrix(*NamedWeight(swiglu, "up_proj.weight"), {{1, 0}, {0, 1}});
+    SetMatrix(*NamedWeight(swiglu, "down_proj.weight"), {{1, 0}, {0, 1}});
+
+    const Tensor<float> out = swiglu.Forward(RowVector({1.0f, 2.0f}));
+
+    ASSERT_EQ(out.Shape(), (std::vector<size_t>{1, 2}));
+    EXPECT_NEAR(out(0, 0), 0.7310586f, kTol);
+    EXPECT_NEAR(out(0, 1), 3.5231884f, kTol);
+}
+
+TEST(SwiGLUForward, SiluIsAppliedToTheGateNotTheUpProjection) {
+    SwiGLU<float> swiglu(2, 2);
+    SetMatrix(*NamedWeight(swiglu, "gate_proj.weight"), {{1, 0}, {0, 1}});
+    SetMatrix(*NamedWeight(swiglu, "up_proj.weight"), {{2, 0}, {0, 2}});
+    SetMatrix(*NamedWeight(swiglu, "down_proj.weight"), {{1, 0}, {0, 1}});
+
+    const Tensor<float> out = swiglu.Forward(RowVector({1.0f, -1.0f}));
+
+    EXPECT_NEAR(out(0, 0), Silu(1.0f) * 2.0f, kTol);
+    EXPECT_NEAR(out(0, 1), Silu(-1.0f) * -2.0f, kTol);
+    EXPECT_GT(std::fabs(out(0, 0) - Silu(2.0f) * 1.0f), 1e-2f) << "gate and up look swapped";
+}
+
+TEST(SwiGLUForward, DownProjectionMapsBackToModelWidth) {
+    SwiGLU<float> swiglu(2, 2);
+    SetMatrix(*NamedWeight(swiglu, "gate_proj.weight"), {{1, 0}, {0, 1}});
+    SetMatrix(*NamedWeight(swiglu, "up_proj.weight"), {{1, 0}, {0, 1}});
+    SetMatrix(*NamedWeight(swiglu, "down_proj.weight"), {{0, 1}, {1, 0}});
+
+    const Tensor<float> out = swiglu.Forward(RowVector({1.0f, 2.0f}));
+
+    EXPECT_NEAR(out(0, 0), 3.5231884f, kTol);
+    EXPECT_NEAR(out(0, 1), 0.7310586f, kTol);
+}
+
+TEST(SwiGLUForward, HandComputedWithAWiderHiddenLayer) {
+    SwiGLU<float> swiglu(2, 3);
+    SetMatrix(*NamedWeight(swiglu, "gate_proj.weight"), {{1, 0}, {0, 1}, {1, 1}});
+    SetMatrix(*NamedWeight(swiglu, "up_proj.weight"), {{1, 1}, {1, 0}, {0, 1}});
+    SetMatrix(*NamedWeight(swiglu, "down_proj.weight"), {{1, 0, 0}, {0, 1, 1}});
+
+    const Tensor<float> out = swiglu.Forward(RowVector({1.0f, 1.0f}));
+
+    ASSERT_EQ(out.Shape(), (std::vector<size_t>{1, 2}));
+    EXPECT_NEAR(out(0, 0), 1.4621172f, kTol);
+    EXPECT_NEAR(out(0, 1), 2.4926528f, kTol);
+}
+
+TEST(SwiGLUForward, ZeroInputGivesZeroOutput) {
+    SwiGLU<float> swiglu(3, 5);
+    for (const auto &param : swiglu.Parameters()) {
+        std::fill(param->Data(), param->Data() + param->Size(), 0.37f);
+    }
+
+    const Tensor<float> out = swiglu.Forward(Tensor<float>({4, 3}, 0.0f));
+
+    for (size_t i = 0; i < 4; ++i)
+        for (size_t j = 0; j < 3; ++j) EXPECT_NEAR(out(i, j), 0.0f, kTol);
+}
+
+TEST(SwiGLUForward, ProcessesEachTokenIndependently) {
+    SwiGLU<float> swiglu(2, 3);
+    SetMatrix(*NamedWeight(swiglu, "gate_proj.weight"), {{1, 0}, {0, 1}, {1, 1}});
+    SetMatrix(*NamedWeight(swiglu, "up_proj.weight"), {{1, 1}, {1, 0}, {0, 1}});
+    SetMatrix(*NamedWeight(swiglu, "down_proj.weight"), {{1, 0, 0}, {0, 1, 1}});
+
+    Tensor<float> batch({2, 3, 2});
+    for (size_t b = 0; b < 2; ++b)
+        for (size_t t = 0; t < 3; ++t) {
+            batch(b, t, 0) = 0.3f * static_cast<float>(b + 1) - 0.2f * static_cast<float>(t);
+            batch(b, t, 1) = -0.5f + 0.4f * static_cast<float>(t);
+        }
+
+    const Tensor<float> out = swiglu.Forward(batch);
+
+    ASSERT_EQ(out.Shape(), (std::vector<size_t>{2, 3, 2}));
+    for (size_t b = 0; b < 2; ++b)
+        for (size_t t = 0; t < 3; ++t) {
+            const Tensor<float> single = swiglu.Forward(RowVector({batch(b, t, 0), batch(b, t, 1)}));
+            EXPECT_NEAR(out(b, t, 0), single(0, 0), kTol) << "at (" << b << ", " << t << ")";
+            EXPECT_NEAR(out(b, t, 1), single(0, 1), kTol) << "at (" << b << ", " << t << ")";
+        }
+}
+
+TEST(SwiGLUForward, LeavesTheInputUntouched) {
+    SwiGLU<float> swiglu(2, 2);
+    SetMatrix(*NamedWeight(swiglu, "gate_proj.weight"), {{1, 0}, {0, 1}});
+    SetMatrix(*NamedWeight(swiglu, "up_proj.weight"), {{1, 0}, {0, 1}});
+    SetMatrix(*NamedWeight(swiglu, "down_proj.weight"), {{1, 0}, {0, 1}});
+    const Tensor<float> in = RowVector({1.0f, -2.0f});
+
+    const Tensor<float> out = swiglu.Forward(in);
+
+    EXPECT_FLOAT_EQ(in(0, 0), 1.0f);
+    EXPECT_FLOAT_EQ(in(0, 1), -2.0f);
+    EXPECT_FALSE(out.SharesStorage(in));
 }
 
 // --- Softmax ----------------------------------------------------------------

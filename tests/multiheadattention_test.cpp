@@ -13,6 +13,7 @@
 using math::Tensor;
 using nn::Module;
 using transformer::MultiHeadAttention;
+using transformer::SplitHeads;
 
 namespace {
 
@@ -57,9 +58,9 @@ void GentleFill(Tensor<T>& t) {
 // them without the layer exposing them.
 template <typename T>
 Tensor<T> WeightsOf(MultiHeadAttention<T>& attn, const Tensor<T>& x, bool causal) {
-    Tensor<T> q = attn.SplitHeads(attn.query->Forward(x));
-    Tensor<T> k = attn.SplitHeads(attn.key->Forward(x));
-    Tensor<T> scores = math::MatMul(q, k.Transpose(-2, -1)) / attn.scale;
+    Tensor<T> q = SplitHeads(attn.query->Forward(x), attn.num_heads, attn.head_dim);
+    Tensor<T> k = SplitHeads(attn.key->Forward(x), attn.num_heads, attn.head_dim);
+    Tensor<T> scores = math::MatMul(q, k.Transpose(-2, -1)) * attn.scale;
 
     if (causal) {
         const size_t seq = scores.Shape()[scores.Rank() - 1];
@@ -123,9 +124,9 @@ TEST(MultiHeadAttentionConstruction, DerivesHeadDimension) {
     EXPECT_EQ(attn.head_dim, 64u);
 }
 
-TEST(MultiHeadAttentionConstruction, ScaleIsSqrtOfHeadDimension) {
+TEST(MultiHeadAttentionConstruction, ScaleIsInverseSqrtOfHeadDimension) {
     MultiHeadAttention<float> attn(512, 8);
-    EXPECT_NEAR(attn.scale, std::sqrt(64.0f), kTol);
+    EXPECT_NEAR(attn.scale, 1.0f / std::sqrt(64.0f), kTol);
 }
 
 TEST(MultiHeadAttentionConstruction, RejectsNonDivisibleModelSize) {
@@ -160,63 +161,6 @@ TEST(MultiHeadAttentionConstruction, RegistersEightParameters) {
 TEST(MultiHeadAttentionConstruction, WithoutBiasRegistersFour) {
     MultiHeadAttention<float> attn(8, 2, false);
     EXPECT_EQ(attn.Parameters().size(), 4u);
-}
-
-// --- head splitting and merging ---------------------------------------------
-
-TEST(MultiHeadAttentionHeads, SplitProducesBatchHeadSequenceDim) {
-    MultiHeadAttention<float> attn(8, 2);
-    Tensor<float> x({3, 5, 8}, 1.0f);
-
-    const Tensor<float> split = attn.SplitHeads(x);
-
-    EXPECT_EQ(split.Shape(), (std::vector<size_t>{3, 2, 5, 4}));
-}
-
-TEST(MultiHeadAttentionHeads, EachHeadTakesAContiguousChannelRange) {
-    MultiHeadAttention<float> attn(8, 2);   // head_dim 4
-    Tensor<float> x({1, 2, 8});
-    IotaFill(x);                            // position 0 holds 1..8
-
-    const Tensor<float> split = attn.SplitHeads(x);
-
-    for (size_t d = 0; d < 4; ++d) {
-        EXPECT_FLOAT_EQ(split(0, 0, 0, d), static_cast<float>(1 + d)) << "head 0";
-        EXPECT_FLOAT_EQ(split(0, 1, 0, d), static_cast<float>(5 + d)) << "head 1";
-    }
-}
-
-TEST(MultiHeadAttentionHeads, MergeInvertsSplit) {
-    MultiHeadAttention<float> attn(8, 2);
-    Tensor<float> x({2, 3, 8});
-    IotaFill(x);
-
-    const Tensor<float> back = attn.MergeHeads(attn.SplitHeads(x));
-
-    ASSERT_EQ(back.Shape(), x.Shape());
-    for (size_t b = 0; b < 2; ++b)
-        for (size_t s = 0; s < 3; ++s)
-            for (size_t d = 0; d < 8; ++d)
-                EXPECT_FLOAT_EQ(back(b, s, d), x(b, s, d))
-                    << "at (" << b << ", " << s << ", " << d << ")";
-}
-
-TEST(MultiHeadAttentionHeads, SplitResultIsContiguous) {
-    MultiHeadAttention<float> attn(8, 2);
-    Tensor<float> x({1, 4, 8}, 1.0f);
-
-    EXPECT_TRUE(attn.SplitHeads(x).IsContiguous());
-}
-
-TEST(MultiHeadAttentionHeads, SingleHeadSplitIsAReshape) {
-    MultiHeadAttention<float> attn(8, 1);
-    Tensor<float> x({1, 3, 8});
-    IotaFill(x);
-
-    const Tensor<float> split = attn.SplitHeads(x);
-
-    ASSERT_EQ(split.Shape(), (std::vector<size_t>{1, 1, 3, 8}));
-    EXPECT_FLOAT_EQ(split(0, 0, 2, 7), x(0, 2, 7));
 }
 
 // --- forward ----------------------------------------------------------------
@@ -532,9 +476,9 @@ TEST(MultiHeadAttentionMask, MaskedKeysGetZeroWeight) {
     Tensor<float> x({1, 4, 8});
     IotaFill(x);
 
-    Tensor<float> q = attn.SplitHeads(attn.query->Forward(x));
-    Tensor<float> k = attn.SplitHeads(attn.key->Forward(x));
-    Tensor<float> scores = math::MatMul(q, k.Transpose(-2, -1)) / attn.scale;
+    Tensor<float> q = SplitHeads(attn.query->Forward(x), attn.num_heads, attn.head_dim);
+    Tensor<float> k = SplitHeads(attn.key->Forward(x), attn.num_heads, attn.head_dim);
+    Tensor<float> scores = math::MatMul(q, k.Transpose(-2, -1)) * attn.scale;
 
     Tensor<bool> mask({4, 4}, false);
     for (size_t i = 0; i < 4; ++i) mask(i, 1) = true;
