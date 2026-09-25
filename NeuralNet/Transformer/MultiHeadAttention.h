@@ -32,7 +32,7 @@ namespace transformer
         MultiHeadAttention(size_t d_model, size_t num_heads, bool use_bias = true) : 
         d_model(d_model),
         num_heads(num_heads),
-        head_dim(ValidatedHeadDim(d_model, num_heads)),
+        head_dim(ValidatedDivide(d_model, num_heads)),
         scale(1/std::sqrt(static_cast<T>(head_dim))),
         query(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
         key(std::make_shared<Linear<T>>(d_model, d_model, use_bias)),
@@ -72,6 +72,7 @@ namespace transformer
                 K = cache->k.Slice(2, 0, cache_len + seq);
                 V = cache->v.Slice(2, 0, cache_len + seq);
             }
+
 
             return output_proj->Forward(MergeHeads(SDPA(Q, K, V, mask, causal, scale), d_model));
         }

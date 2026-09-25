@@ -13,17 +13,17 @@ namespace transformer{
     using math::Tensor;
     using activation::Softmax;
     
-    inline size_t ValidatedHeadDim(size_t d_model, size_t num_heads)
+    inline size_t ValidatedDivide(size_t numerator, size_t denominator)
     {
-        if (num_heads == 0)
+        if (denominator == 0)
         {
-            throw std::invalid_argument("MultiHeadAttention: num_heads must be greater than zero.");
+            throw std::invalid_argument("denominator must be greater than zero.");
         }
-        if (d_model % num_heads != 0)
+        if (numerator % denominator != 0)
         {
-            throw std::invalid_argument("MultiHeadAttention: d_model must be divisible by num_heads.");
+            throw std::invalid_argument("numerator must be divisible by denominator.");
         }
-        return d_model / num_heads;
+        return numerator / denominator;
     }
 
     template <typename T>

@@ -10,7 +10,7 @@ using math::Tensor;
 using transformer::MergeHeads;
 using transformer::SDPA;
 using transformer::SplitHeads;
-using transformer::ValidatedHeadDim;
+using transformer::ValidatedDivide;
 
 namespace {
 
@@ -40,20 +40,20 @@ Tensor<float> HeadSlice(const Tensor<float> &x, size_t head) {
 
 }  // namespace
 
-// --- ValidatedHeadDim -------------------------------------------------------
+// --- ValidatedDivide --------------------------------------------------------
 
-TEST(ValidatedHeadDim, DividesModelWidthByHeads) {
-    EXPECT_EQ(ValidatedHeadDim(512, 8), 64u);
-    EXPECT_EQ(ValidatedHeadDim(8, 1), 8u);
+TEST(ValidatedDivide, DividesModelWidthByHeads) {
+    EXPECT_EQ(ValidatedDivide(512, 8), 64u);
+    EXPECT_EQ(ValidatedDivide(8, 1), 8u);
 }
 
-TEST(ValidatedHeadDim, RejectsZeroHeads) {
-    EXPECT_THROW(ValidatedHeadDim(8, 0), std::invalid_argument);
+TEST(ValidatedDivide, RejectsZeroHeads) {
+    EXPECT_THROW(ValidatedDivide(8, 0), std::invalid_argument);
 }
 
-TEST(ValidatedHeadDim, RejectsNonDivisibleModelWidth) {
-    EXPECT_THROW(ValidatedHeadDim(100, 8), std::invalid_argument);
-    EXPECT_THROW(ValidatedHeadDim(8, 16), std::invalid_argument);
+TEST(ValidatedDivide, RejectsNonDivisibleModelWidth) {
+    EXPECT_THROW(ValidatedDivide(100, 8), std::invalid_argument);
+    EXPECT_THROW(ValidatedDivide(8, 16), std::invalid_argument);
 }
 
 // --- SplitHeads / MergeHeads ------------------------------------------------
