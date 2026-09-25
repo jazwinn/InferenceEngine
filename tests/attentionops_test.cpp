@@ -8,6 +8,7 @@
 
 using math::Tensor;
 using transformer::MergeHeads;
+using transformer::NormalizeMask;
 using transformer::SDPA;
 using transformer::SplitHeads;
 using transformer::ValidatedDivide;
@@ -274,4 +275,51 @@ TEST(SDPA, LeavesInputsUntouched) {
     EXPECT_FLOAT_EQ(Q(0, 0, 0, 0), q0);
     EXPECT_FLOAT_EQ(K(0, 0, 0, 0), k0);
     EXPECT_FLOAT_EQ(V(0, 0, 0, 0), v0);
+}
+
+TEST(SDPA, FullyMaskedRowStaysFinite) {
+    Tensor<float> Q({1, 1, 2, 4});
+    Tensor<float> K({1, 1, 3, 4});
+    Tensor<float> V({1, 1, 3, 2});
+    WaveFill(Q, 0.3);
+    WaveFill(K, 1.1);
+    WaveFill(V, 2.0);
+    Tensor<bool> mask({2, 3}, false);
+    for (size_t k = 0; k < 3; ++k) mask(0, k) = true;
+
+    const Tensor<float> out = SDPA(Q, K, V, mask);
+
+    for (size_t d = 0; d < 2; ++d) {
+        EXPECT_TRUE(std::isfinite(out(0, 0, 0, d)));
+        EXPECT_TRUE(std::isfinite(out(0, 0, 1, d)));
+    }
+}
+
+TEST(NormalizeMask, EmptyMaskPassesThrough) {
+    EXPECT_EQ(NormalizeMask(Tensor<bool>(), 2, 4, 3, 5).Size(), 0u);
+}
+
+TEST(NormalizeMask, PromotesLowerRanksToFourDimensions) {
+    EXPECT_EQ(NormalizeMask(Tensor<bool>({3, 5}, false), 2, 4, 3, 5).Shape(), (std::vector<size_t>{1, 1, 3, 5}));
+    EXPECT_EQ(NormalizeMask(Tensor<bool>({2, 3, 5}, false), 2, 4, 3, 5).Shape(), (std::vector<size_t>{2, 1, 3, 5}));
+    EXPECT_EQ(NormalizeMask(Tensor<bool>({2, 4, 3, 5}, false), 2, 4, 3, 5).Shape(), (std::vector<size_t>{2, 4, 3, 5}));
+    EXPECT_EQ(NormalizeMask(Tensor<bool>({1, 1, 1, 5}, false), 2, 4, 3, 5).Shape(), (std::vector<size_t>{1, 1, 1, 5}));
+}
+
+TEST(NormalizeMask, KeepsMaskValuesInPlace) {
+    Tensor<bool> mask({2, 3, 5}, false);
+    mask(1, 2, 4) = true;
+
+    const Tensor<bool> normalized = NormalizeMask(mask, 2, 4, 3, 5);
+
+    EXPECT_TRUE(normalized(1, 0, 2, 4));
+    EXPECT_FALSE(normalized(0, 0, 2, 4));
+}
+
+TEST(NormalizeMask, RejectsShapesThatDoNotBroadcast) {
+    EXPECT_THROW(NormalizeMask(Tensor<bool>({5}, false), 2, 4, 3, 5), std::invalid_argument);
+    EXPECT_THROW(NormalizeMask(Tensor<bool>({1, 1, 1, 3, 5}, false), 2, 4, 3, 5), std::invalid_argument);
+    EXPECT_THROW(NormalizeMask(Tensor<bool>({3, 3, 5}, false), 2, 4, 3, 5), std::invalid_argument);
+    EXPECT_THROW(NormalizeMask(Tensor<bool>({2, 2, 3, 5}, false), 2, 4, 3, 5), std::invalid_argument);
+    EXPECT_THROW(NormalizeMask(Tensor<bool>({3, 4}, false), 2, 4, 3, 5), std::invalid_argument);
 }

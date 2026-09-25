@@ -2353,3 +2353,150 @@ TEST(TensorCopyInto, WorksForOtherElementTypes) {
     EXPECT_EQ(dst(0, 0), -1);
     EXPECT_EQ(dst(1, 1), 6);
 }
+
+TEST(TensorUnsqueeze, InsertsSizeOneAxisAtEveryPosition) {
+    Tensor<float> a({2, 3});
+
+    EXPECT_EQ(a.Unsqueeze(0).Shape(), (std::vector<size_t>{1, 2, 3}));
+    EXPECT_EQ(a.Unsqueeze(1).Shape(), (std::vector<size_t>{2, 1, 3}));
+    EXPECT_EQ(a.Unsqueeze(2).Shape(), (std::vector<size_t>{2, 3, 1}));
+}
+
+TEST(TensorUnsqueeze, PreservesValuesAndElementCount) {
+    Tensor<float> a({2, 3});
+    IotaFill(a);
+
+    const Tensor<float> u = a.Unsqueeze(1);
+
+    EXPECT_EQ(u.Size(), a.Size());
+    for (size_t i = 0; i < 2; ++i)
+        for (size_t j = 0; j < 3; ++j) EXPECT_FLOAT_EQ(u(i, 0, j), a(i, j));
+}
+
+TEST(TensorUnsqueeze, IsAViewThatSharesStorage) {
+    Tensor<float> a({2, 3}, 0.0f);
+    Tensor<float> u = a.Unsqueeze(0);
+
+    u(0, 1, 2) = 7.0f;
+
+    EXPECT_TRUE(u.SharesStorage(a));
+    EXPECT_FLOAT_EQ(a(1, 2), 7.0f);
+}
+
+TEST(TensorUnsqueeze, KeepsContiguousInputContiguous) {
+    Tensor<float> a({2, 3});
+
+    EXPECT_TRUE(a.Unsqueeze(0).IsContiguous());
+    EXPECT_TRUE(a.Unsqueeze(1).IsContiguous());
+    EXPECT_TRUE(a.Unsqueeze(2).IsContiguous());
+}
+
+TEST(TensorUnsqueeze, WorksOnNonContiguousSliceWithoutCopying) {
+    Tensor<float> cache({2, 4, 3});
+    IotaFill(cache);
+    const Tensor<float> slice = cache.Slice(1, 0, 2);
+    ASSERT_FALSE(slice.IsContiguous());
+
+    Tensor<float> u = slice.Unsqueeze(1);
+
+    EXPECT_TRUE(u.SharesStorage(cache));
+    EXPECT_EQ(u.Shape(), (std::vector<size_t>{2, 1, 2, 3}));
+    for (size_t h = 0; h < 2; ++h)
+        for (size_t s = 0; s < 2; ++s)
+            for (size_t d = 0; d < 3; ++d) EXPECT_FLOAT_EQ(u(h, 0, s, d), cache(h, s, d));
+
+    u(1, 0, 1, 2) = -1.0f;
+    EXPECT_FLOAT_EQ(cache(1, 1, 2), -1.0f);
+}
+
+TEST(TensorUnsqueeze, BroadcastsInMatMulWithoutCopying) {
+    Tensor<float> kv({2, 4, 3});
+    IotaFill(kv);
+    const Tensor<float> k = kv.Slice(1, 0, 2).Unsqueeze(1);
+    Tensor<float> q({2, 3, 1, 3}, 1.0f);
+
+    const Tensor<float> scores = math::MatMul(q, k.Transpose(-2, -1));
+
+    ASSERT_EQ(scores.Shape(), (std::vector<size_t>{2, 3, 1, 2}));
+    for (size_t h = 0; h < 2; ++h)
+        for (size_t g = 0; g < 3; ++g)
+            for (size_t s = 0; s < 2; ++s)
+                EXPECT_FLOAT_EQ(scores(h, g, 0, s), kv(h, s, 0) + kv(h, s, 1) + kv(h, s, 2));
+}
+
+TEST(TensorUnsqueeze, RejectsAxisPastTheEnd) {
+    Tensor<float> a({2, 3});
+    EXPECT_THROW(a.Unsqueeze(3), std::invalid_argument);
+}
+
+TEST(TensorUnsqueeze, RejectsEmptyTensor) {
+    EXPECT_THROW(Tensor<float>().Unsqueeze(0), std::invalid_argument);
+}
+
+TEST(TensorSqueeze, RemovesSizeOneAxisAtEveryPosition) {
+    EXPECT_EQ(Tensor<float>({1, 2, 3}).Squeeze(0).Shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(Tensor<float>({2, 1, 3}).Squeeze(1).Shape(), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(Tensor<float>({2, 3, 1}).Squeeze(2).Shape(), (std::vector<size_t>{2, 3}));
+}
+
+TEST(TensorSqueeze, PreservesValuesAndSharesStorage) {
+    Tensor<float> a({2, 1, 3});
+    IotaFill(a);
+
+    Tensor<float> s = a.Squeeze(1);
+
+    EXPECT_TRUE(s.SharesStorage(a));
+    for (size_t i = 0; i < 2; ++i)
+        for (size_t j = 0; j < 3; ++j) EXPECT_FLOAT_EQ(s(i, j), a(i, 0, j));
+
+    s(1, 2) = -5.0f;
+    EXPECT_FLOAT_EQ(a(1, 0, 2), -5.0f);
+}
+
+TEST(TensorSqueeze, WorksOnNonContiguousView) {
+    Tensor<float> a({2, 4, 3});
+    IotaFill(a);
+    const Tensor<float> view = a.Slice(1, 1, 1);
+    ASSERT_EQ(view.Shape(), (std::vector<size_t>{2, 1, 3}));
+
+    const Tensor<float> s = view.Squeeze(1);
+
+    EXPECT_TRUE(s.SharesStorage(a));
+    EXPECT_EQ(s.Shape(), (std::vector<size_t>{2, 3}));
+    for (size_t i = 0; i < 2; ++i)
+        for (size_t j = 0; j < 3; ++j) EXPECT_FLOAT_EQ(s(i, j), a(i, 1, j));
+}
+
+TEST(TensorSqueeze, UndoesUnsqueeze) {
+    Tensor<float> a({2, 4, 3});
+    const Tensor<float> slice = a.Slice(1, 1, 2);
+
+    for (size_t axis = 0; axis <= slice.Rank(); ++axis) {
+        SCOPED_TRACE(axis);
+        const Tensor<float> round_trip = slice.Unsqueeze(axis).Squeeze(axis);
+        EXPECT_EQ(round_trip.Shape(), slice.Shape());
+        EXPECT_EQ(round_trip.Strides(), slice.Strides());
+        EXPECT_EQ(round_trip.Offset(), slice.Offset());
+    }
+}
+
+TEST(TensorSqueeze, RejectsAxisLargerThanOne) {
+    Tensor<float> a({2, 1, 3});
+    EXPECT_THROW(a.Squeeze(0), std::invalid_argument);
+    EXPECT_THROW(a.Squeeze(2), std::invalid_argument);
+}
+
+TEST(TensorSqueeze, RejectsOutOfRangeAxis) {
+    Tensor<float> a({2, 1, 3});
+    EXPECT_THROW(a.Squeeze(3), std::invalid_argument);
+    EXPECT_THROW(a.Squeeze(4), std::invalid_argument);
+}
+
+TEST(TensorSqueeze, RejectsRemovingTheOnlyAxis) {
+    Tensor<float> a({1});
+    EXPECT_THROW(a.Squeeze(0), std::invalid_argument);
+}
+
+TEST(TensorSqueeze, RejectsEmptyTensor) {
+    EXPECT_THROW(Tensor<float>().Squeeze(0), std::invalid_argument);
+}

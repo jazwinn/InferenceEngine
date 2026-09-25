@@ -505,6 +505,67 @@ TEST(MultiHeadAttentionMask, AnEmptyMaskIsIgnored) {
             EXPECT_FLOAT_EQ(withEmpty(0, s, d), without(0, s, d));
 }
 
+TEST(MultiHeadAttentionMask, RankThreeMaskAppliesPerBatchNotPerHead) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> x({2, 4, 8});
+    GentleFill(x);
+
+    Tensor<bool> rank3({2, 4, 4}, false);
+    Tensor<bool> rank4({2, 1, 4, 4}, false);
+    for (size_t i = 0; i < 4; ++i) {
+        rank3(1, i, 3) = true;
+        rank4(1, 0, i, 3) = true;
+    }
+
+    const Tensor<float> masked = attn.Forward(x, nullptr, 0, rank3);
+    const Tensor<float> reference = attn.Forward(x, nullptr, 0, rank4);
+    const Tensor<float> unmasked = attn.Forward(x);
+
+    bool batch1_changed = false;
+    for (size_t s = 0; s < 4; ++s)
+        for (size_t d = 0; d < 8; ++d) {
+            EXPECT_NEAR(masked(0, s, d), reference(0, s, d), kTol);
+            EXPECT_NEAR(masked(1, s, d), reference(1, s, d), kTol);
+            EXPECT_NEAR(masked(0, s, d), unmasked(0, s, d), kTol);
+            batch1_changed |= std::fabs(masked(1, s, d) - unmasked(1, s, d)) > kTol;
+        }
+    EXPECT_TRUE(batch1_changed);
+}
+
+TEST(MultiHeadAttentionMask, RankThreeMaskWorksWithSeparateQKV) {
+    MultiHeadAttention<float> attn(8, 2);
+    SeedProjections(attn);
+    Tensor<float> q({2, 3, 8});
+    Tensor<float> kv({2, 5, 8});
+    GentleFill(q);
+    GentleFill(kv);
+
+    Tensor<bool> rank3({2, 3, 5}, false);
+    Tensor<bool> rank4({2, 1, 3, 5}, false);
+    for (size_t i = 0; i < 3; ++i) {
+        rank3(0, i, 4) = true;
+        rank4(0, 0, i, 4) = true;
+    }
+
+    const Tensor<float> masked = attn.Forward(q, kv, kv, rank3);
+    const Tensor<float> reference = attn.Forward(q, kv, kv, rank4);
+
+    for (size_t b = 0; b < 2; ++b)
+        for (size_t s = 0; s < 3; ++s)
+            for (size_t d = 0; d < 8; ++d) EXPECT_NEAR(masked(b, s, d), reference(b, s, d), kTol);
+}
+
+TEST(MultiHeadAttentionMask, RejectsMaskThatDoesNotBroadcast) {
+    MultiHeadAttention<float> attn(8, 2);
+    Tensor<float> x({2, 4, 8});
+    GentleFill(x);
+
+    EXPECT_THROW(attn.Forward(x, nullptr, 0, Tensor<bool>({3, 4, 4}, false)), std::invalid_argument);
+    EXPECT_THROW(attn.Forward(x, nullptr, 0, Tensor<bool>({2, 3, 4, 4}, false)), std::invalid_argument);
+    EXPECT_THROW(attn.Forward(x, nullptr, 0, Tensor<bool>({4}, false)), std::invalid_argument);
+}
+
 // --- separate query, key and value inputs -----------------------------------
 
 TEST(MultiHeadAttentionQKV, SelfAttentionIsTheSpecialCaseOfQKV) {

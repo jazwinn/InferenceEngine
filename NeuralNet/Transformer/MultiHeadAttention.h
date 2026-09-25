@@ -52,8 +52,9 @@ namespace transformer
             Tensor<T> K = SplitHeads(key->Forward(k), num_heads, head_dim);
             Tensor<T> V = SplitHeads(value->Forward(v), num_heads, head_dim);
 
+            const Tensor<bool> attnMask = NormalizeMask(mask, Q.Shape()[0], num_heads, Q.Shape()[2], K.Shape()[2]);
 
-            return output_proj->Forward(MergeHeads(SDPA(Q,K,V, mask, causal, scale), d_model));
+            return output_proj->Forward(MergeHeads(SDPA(Q, K, V, attnMask, causal, scale), d_model));
         }
 
 
@@ -73,8 +74,9 @@ namespace transformer
                 V = cache->v.Slice(2, 0, cache_len + seq);
             }
 
+            const Tensor<bool> attnMask = NormalizeMask(mask, Q.Shape()[0], num_heads, seq, K.Shape()[2]);
 
-            return output_proj->Forward(MergeHeads(SDPA(Q, K, V, mask, causal, scale), d_model));
+            return output_proj->Forward(MergeHeads(SDPA(Q, K, V, attnMask, causal, scale), d_model));
         }
 
         template <typename... Args>

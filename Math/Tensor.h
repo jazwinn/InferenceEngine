@@ -306,6 +306,41 @@ namespace math {
             return Clone();
         }
 
+        Tensor<T> Unsqueeze(size_t axis) const {
+            if (!m_data) {
+                throw std::invalid_argument("Cannot unsqueeze an empty tensor.");
+            }
+            if (axis > m_shape.size()) {
+                throw std::invalid_argument("Unsqueeze() axis is out of range.");
+            }
+
+            Tensor<T> result = *this;
+            const size_t stride = axis < m_shape.size() ? m_stride[axis] * m_shape[axis] : 1;
+            result.m_shape.insert(result.m_shape.begin() + axis, 1);
+            result.m_stride.insert(result.m_stride.begin() + axis, stride);
+            return result;        
+        }
+
+        Tensor<T> Squeeze(size_t axis) const {
+            if (!m_data) {
+                throw std::invalid_argument("Cannot squeeze an empty tensor.");
+            }
+            if (axis >= m_shape.size()) {
+                throw std::invalid_argument("Squeeze() axis is out of range.");
+            }
+            if (m_shape[axis] != 1) {
+                throw std::invalid_argument("Squeeze() axis must have size 1.");
+            }
+            if (m_shape.size() == 1) {
+                throw std::invalid_argument("Squeeze() cannot remove the only axis.");
+            }
+
+            Tensor<T> result = *this;
+            result.m_shape.erase(result.m_shape.begin() + axis);
+            result.m_stride.erase(result.m_stride.begin() + axis);
+            return result;
+        } 
+
 
         Tensor<T>& operator+=(const Tensor<T>& other) {
             return BroadcastInto(other, [](T& a, T b) { a += b; });

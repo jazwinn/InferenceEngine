@@ -7,6 +7,7 @@
 #include "NeuralNet/Linear.h"
 #include "NeuralNet/Transformer/KVCache.h"
 #include "NeuralNet/Transformer/AttentionOps.h"
+#include "NeuralNet/Transformer/TransformerConfig.h"
 
 namespace transformer{
 
@@ -16,39 +17,21 @@ namespace transformer{
     using math::CopyInto;
 
 
-    template <typename T>
+    template <typename T = float>
     class GroupQueryAttention: public Module<T>
     {
     public:
-        GroupQueryAttention(size_t d_model, size_t num_heads_q, size_t num_heads_kv, bool use_bias = true):
-            dModel(d_model),
-            numHeadsQ(num_heads_q),
-            numHeadsKV(num_heads_kv),
-            numGroups(ValidatedDivide(num_heads_q, num_heads_kv)),
-            headDim(ValidatedDivide(d_model, num_heads_q)),
+        explicit GroupQueryAttention(const TransformerConfig& cfg):
+            dModel(cfg.d_model > 0 ? cfg.d_model : throw std::invalid_argument("GroupQueryAttention: d_model must be greater than zero.")),
+            numHeadsQ(cfg.num_heads),
+            numHeadsKV(cfg.KVHeads()),
+            numGroups(ValidatedDivide(numHeadsQ, numHeadsKV)),
+            headDim(cfg.head_dim > 0 ? cfg.head_dim : ValidatedDivide(dModel, numHeadsQ)),
             scale(T(1/std::sqrt(static_cast<T>(headDim)))),
-            query(std::make_shared<Linear<T>>(d_model, headDim * numHeadsQ, use_bias)),
-            key(std::make_shared<Linear<T>>(d_model, headDim * numHeadsKV, use_bias)),
-            value(std::make_shared<Linear<T>>(d_model, headDim * numHeadsKV, use_bias)),
-            output_proj(std::make_shared<Linear<T>>(headDim * numHeadsQ, d_model, use_bias))
-        {
-            this->RegisterSubmodule("query", query);
-            this->RegisterSubmodule("key", key);
-            this->RegisterSubmodule("value", value);
-            this->RegisterSubmodule("output_proj", output_proj);
-        }
-
-        GroupQueryAttention(size_t d_model, size_t num_heads_q, size_t num_heads_kv, size_t head_dim, bool use_bias = true):
-            dModel(d_model),
-            numHeadsQ(num_heads_q),
-            numHeadsKV(num_heads_kv),
-            numGroups(ValidatedDivide(num_heads_q, num_heads_kv)),
-            headDim(head_dim),
-            scale(T(1/std::sqrt(static_cast<T>(headDim)))),
-            query(std::make_shared<Linear<T>>(d_model, headDim * numHeadsQ, use_bias)),
-            key(std::make_shared<Linear<T>>(d_model, headDim * numHeadsKV, use_bias)),
-            value(std::make_shared<Linear<T>>(d_model, headDim * numHeadsKV, use_bias)),
-            output_proj(std::make_shared<Linear<T>>(headDim * numHeadsQ, d_model, use_bias))
+            query(std::make_shared<Linear<T>>(dModel, headDim * numHeadsQ, cfg.attention_bias)),
+            key(std::make_shared<Linear<T>>(dModel, headDim * numHeadsKV, cfg.attention_bias)),
+            value(std::make_shared<Linear<T>>(dModel, headDim * numHeadsKV, cfg.attention_bias)),
+            output_proj(std::make_shared<Linear<T>>(headDim * numHeadsQ, dModel, cfg.output_bias))
         {
             this->RegisterSubmodule("query", query);
             this->RegisterSubmodule("key", key);
@@ -78,22 +61,29 @@ namespace transformer{
             }
 
             const size_t KVlen = K.Shape()[2];
-            K = K.Reshape(batch, numHeadsKV, 1 , KVlen, headDim);
-            V = V.Reshape(batch, numHeadsKV, 1, KVlen, headDim);
+            K = K.Unsqueeze(2);
+            V = V.Unsqueeze(2);
 
 
             //ensure correct broadcast
-            Tensor<bool> attnMask = mask;
-            if (mask.Size() > 0 && mask.Rank() == 4)
+            Tensor<bool> attnMask = NormalizeMask(mask, batch, numHeadsQ, seq, KVlen);
+            if (attnMask.Size() > 0)
             {
-                const auto& s = mask.Shape();
-                attnMask = mask.Reshape(s[0], 1, 1, s[2], s[3]);
+                const auto& s = attnMask.Shape();
+                attnMask = s[1] == 1 ? attnMask.Unsqueeze(2)
+                                     : attnMask.Reshape(s[0], numHeadsKV, numGroups, s[2], s[3]);
             }
  
             Tensor<T> context = SDPA(Q, K, V, attnMask, causal, scale).Reshape(batch, numHeadsQ, seq, headDim);
 
             return output_proj->Forward(MergeHeads(context, headDim * numHeadsQ));
 
+        }
+
+        template <typename... Args>
+        Tensor<T> operator()(const Tensor<T> &input, Args... args)
+        {
+            return Forward(input, args...);
         }
 
 
