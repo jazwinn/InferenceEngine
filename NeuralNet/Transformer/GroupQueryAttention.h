@@ -5,6 +5,7 @@
 #include "NeuralNet/Module.h"
 #include "Math/Tensor.h"
 #include "NeuralNet/Linear.h"
+#include "NeuralNet/Transformer/RoPE.h"
 #include "NeuralNet/Transformer/KVCache.h"
 #include "NeuralNet/Transformer/AttentionOps.h"
 #include "NeuralNet/Transformer/TransformerConfig.h"
@@ -21,7 +22,7 @@ namespace transformer{
     class GroupQueryAttention: public Module<T>
     {
     public:
-        explicit GroupQueryAttention(const TransformerConfig& cfg):
+        explicit GroupQueryAttention(const TransformerConfig& cfg, std::shared_ptr<RotaryEmbedding<T>> rope = nullptr):
             dModel(cfg.d_model > 0 ? cfg.d_model : throw std::invalid_argument("GroupQueryAttention: d_model must be greater than zero.")),
             numHeadsQ(cfg.num_heads),
             numHeadsKV(cfg.KVHeads()),
@@ -31,8 +32,23 @@ namespace transformer{
             query(std::make_shared<Linear<T>>(dModel, headDim * numHeadsQ, cfg.attention_bias)),
             key(std::make_shared<Linear<T>>(dModel, headDim * numHeadsKV, cfg.attention_bias)),
             value(std::make_shared<Linear<T>>(dModel, headDim * numHeadsKV, cfg.attention_bias)),
-            output_proj(std::make_shared<Linear<T>>(headDim * numHeadsQ, dModel, cfg.output_bias))
+            output_proj(std::make_shared<Linear<T>>(headDim * numHeadsQ, dModel, cfg.output_bias)),
+            RoPE(std::move(rope))
         {
+            const bool rotary = cfg.position == PositionEncoding::Rotary;
+            if (rotary && !RoPE)
+            {
+                throw std::invalid_argument("GroupQueryAttention: config uses rotary positions but no RotaryEmbedding was given.");
+            }
+            if (!rotary && RoPE)
+            {
+                throw std::invalid_argument("GroupQueryAttention: RotaryEmbedding given but config does not use rotary positions.");
+            }
+            if (RoPE && RoPE->headDim != headDim)
+            {
+                throw std::invalid_argument("GroupQueryAttention: RotaryEmbedding head_dim does not match the attention head_dim.");
+            }
+
             this->RegisterSubmodule("query", query);
             this->RegisterSubmodule("key", key);
             this->RegisterSubmodule("value", value);
@@ -50,7 +66,13 @@ namespace transformer{
             Tensor<T> K = SplitHeads(key->Forward(input), numHeadsKV, headDim);
             Tensor<T> V = SplitHeads(value->Forward(input), numHeadsKV, headDim);
 
+            if(RoPE){
+                Q = RoPE->Apply(Q, cache_len);
+                K = RoPE->Apply(K, cache_len);
+            }
+
             Q = Q.Reshape(batch, numHeadsKV, numGroups, seq, headDim);
+
 
             if (cache)
             {
@@ -94,10 +116,11 @@ namespace transformer{
         size_t headDim;
         T scale;
 
-        std::shared_ptr<Linear<T>> query;
-        std::shared_ptr<Linear<T>> key;
-        std::shared_ptr<Linear<T>> value;
-        std::shared_ptr<Linear<T>> output_proj;
+        std::shared_ptr<Linear<T>> query = nullptr;
+        std::shared_ptr<Linear<T>> key = nullptr;
+        std::shared_ptr<Linear<T>> value = nullptr;
+        std::shared_ptr<Linear<T>> output_proj = nullptr;
+        std::shared_ptr<RotaryEmbedding<T>> RoPE = nullptr;
     };
 
 }
