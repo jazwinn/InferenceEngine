@@ -5,15 +5,18 @@
 #include <stdexcept>
 
 #include "Math/Tensor.h"
+#include "NeuralNet/Transformer/TransformerConfig.h"
 
 namespace nn::transformer{
 
     using math::Tensor;
+    using nn::transformer::config::RopeScaling;
+    using nn::transformer::config::RopeScalingType;
 
     template <typename T = float>
     class RotaryEmbedding{
     public:
-        RotaryEmbedding(size_t head_dim, size_t max_seq, double theta = 10000.0):
+        RotaryEmbedding(size_t head_dim, size_t max_seq, double theta = 10000.0, RopeScaling scaling = {}):
             headDim(ValidatedHeadDim(head_dim)),
             seq(max_seq > 0 ? max_seq : throw std::invalid_argument("RotaryEmbedding: max_seq must be greater than zero.")),
             cos({seq, headDim / 2}),
@@ -23,13 +26,14 @@ namespace nn::transformer{
             {
                 throw std::invalid_argument("RotaryEmbedding: theta must be greater than zero.");
             }
+            ValidateScaling(scaling);
 
             const size_t half = headDim / 2;
             T* cosData = cos.Data();
             T* sinData = sin.Data();
             for (size_t i = 0; i < half; ++i)
             {
-                const double freq = std::pow(theta, -2.0 * static_cast<double>(i) / static_cast<double>(headDim));
+                const double freq = Scaled(std::pow(theta, -2.0 * static_cast<double>(i) / static_cast<double>(headDim)), scaling);
                 for (size_t p = 0; p < seq; ++p)
                 {
                     const double angle = static_cast<double>(p) * freq;
@@ -99,5 +103,64 @@ namespace nn::transformer{
             }
             return head_dim;
         }
+
+        static void ValidateScaling(const RopeScaling& s)
+        {
+            switch (s.type)
+            {
+            case RopeScalingType::Default:
+                return;
+            case RopeScalingType::Linear:
+                if (!(s.factor > 0.0))
+                {
+                    throw std::invalid_argument("RotaryEmbedding: linear scaling needs factor > 0.");
+                }
+                return;
+            case RopeScalingType::Llama3:
+                if (!(s.factor > 0.0) || !(s.low_freq_factor > 0.0) || !(s.high_freq_factor > s.low_freq_factor) ||
+                    s.original_max_position == 0)
+                {
+                    throw std::invalid_argument("RotaryEmbedding: llama3 scaling needs factor > 0, 0 < low_freq_factor < high_freq_factor and original_max_position > 0.");
+                }
+                return;
+            case RopeScalingType::Dynamic:
+            case RopeScalingType::Yarn:
+            case RopeScalingType::LongRope:
+            case RopeScalingType::MRope:
+                break;
+            }
+            throw std::invalid_argument("RotaryEmbedding: this rope scaling type is not implemented.");
+        }
+
+        static double Scaled(double freq, const RopeScaling& s)
+        {
+            if (s.type == RopeScalingType::Default)
+            {
+                return freq;
+            }
+            if (s.type == RopeScalingType::Linear)
+            {
+                return freq / s.factor;
+            }
+
+            const double pi = 3.14159265358979323846;
+            const double wavelen = 2.0 * pi / freq;
+            const double oldLen = static_cast<double>(s.original_max_position);
+            const double lowFreqWavelen = oldLen / s.low_freq_factor;
+            const double highFreqWavelen = oldLen / s.high_freq_factor;
+
+            if (wavelen < highFreqWavelen)
+            {
+                return freq;
+            }
+            if (wavelen > lowFreqWavelen)
+            {
+                return freq / s.factor;
+            }
+
+            const double smooth = (oldLen / wavelen - s.low_freq_factor) / (s.high_freq_factor - s.low_freq_factor);
+            return (1.0 - smooth) * freq / s.factor + smooth * freq;
+        }
+
     };
 }

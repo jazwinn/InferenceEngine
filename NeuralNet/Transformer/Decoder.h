@@ -70,7 +70,7 @@ namespace nn::transformer
         {
             config.Validate();
             if(config.position == PositionEncoding::Rotary){
-                rope = std::make_shared<RotaryEmbedding<T>>(config.HeadDim(), config.max_seq_len, config.rope_theta);
+                rope = std::make_shared<RotaryEmbedding<T>>(config.HeadDim(), config.max_seq_len, config.rope_theta, config.rope_scaling);
             }
 
 

@@ -12,6 +12,16 @@ namespace nn::transformer::config
     enum class Activation        { GELU, GELUTanh, SiLU, ReLU };
     enum class MLPType           { Standard, Gated };          // Gated: down(act(gate(x)) * up(x))
     enum class PositionEncoding  { Learned, Rotary, None };
+    enum class RopeScalingType   { Default, Linear, Dynamic, Yarn, Llama3, LongRope, MRope };
+
+    struct RopeScaling
+    {
+        RopeScalingType type = RopeScalingType::Default;
+        double factor = 1.0;
+        double low_freq_factor = 1.0;
+        double high_freq_factor = 4.0;
+        size_t original_max_position = 8192;
+    };
 
     struct TransformerConfig
     {
@@ -32,6 +42,7 @@ namespace nn::transformer::config
         MLPType          mlp_type       = MLPType::Standard;
         Activation       activation     = Activation::GELU;
         PositionEncoding position       = PositionEncoding::Learned;
+        RopeScaling      rope_scaling   = RopeScaling();
         float            rope_theta     = 10000.0f;
         bool             attention_bias = true;    // bias on q/k/v projections
         bool             output_bias    = true;    // bias on attention output + MLP projections

@@ -8,6 +8,8 @@
 
 using math::Tensor;
 using nn::transformer::RotaryEmbedding;
+using nn::transformer::config::RopeScaling;
+using nn::transformer::config::RopeScalingType;
 
 namespace {
 
@@ -56,6 +58,27 @@ void ExpectNear(const Tensor<float>& actual, const Tensor<float>& expected) {
     Tensor<float> a = actual.Contiguous();
     Tensor<float> e = expected.Contiguous();
     for (size_t i = 0; i < a.Size(); ++i) EXPECT_NEAR(a.Data()[i], e.Data()[i], kTol) << "at flat index " << i;
+}
+
+constexpr size_t kLlamaHeadDim = 64;
+constexpr double kLlamaTheta = 500000.0;
+
+RopeScaling Llama3Scaling() {
+    RopeScaling s;
+    s.type = RopeScalingType::Llama3;
+    s.factor = 32.0;
+    s.low_freq_factor = 1.0;
+    s.high_freq_factor = 4.0;
+    s.original_max_position = 8192;
+    return s;
+}
+
+double AngleAtPositionOne(const RotaryEmbedding<double>& rope, size_t i) {
+    return std::atan2(rope.sin(1, i), rope.cos(1, i));
+}
+
+double Unscaled(size_t i) {
+    return std::pow(kLlamaTheta, -2.0 * static_cast<double>(i) / static_cast<double>(kLlamaHeadDim));
 }
 
 }  // namespace
@@ -210,4 +233,117 @@ TEST(RotaryEmbeddingApply, WorksInDoublePrecision) {
 
     EXPECT_NEAR(r(0, 0, 0, 0), std::cos(3.0), 1e-12);
     EXPECT_NEAR(r(0, 0, 0, 2), std::sin(3.0), 1e-12);
+}
+
+TEST(RotaryEmbeddingScaling, NoneLeavesTheTablesUnchanged) {
+    RotaryEmbedding<float> plain(8, 16, 500000.0);
+    RotaryEmbedding<float> none(8, 16, 500000.0, RopeScaling{});
+
+    ExpectNear(none.cos, plain.cos);
+    ExpectNear(none.sin, plain.sin);
+}
+
+TEST(RotaryEmbeddingScaling, Llama3MatchesHuggingFaceInverseFrequencies) {
+    const std::vector<double> hf = {
+        1.000000000e+00, 6.636012793e-01, 4.403666258e-01, 2.922278345e-01, 1.939227581e-01, 1.286873817e-01,
+        8.539710194e-02, 5.666961893e-02, 3.760603070e-02, 2.495540865e-02, 1.656044088e-02, 1.098952908e-02,
+        7.292665076e-03, 4.839421250e-03, 3.211446106e-03, 1.290548011e-03, 4.295567051e-04, 9.708286234e-05,
+        1.946163866e-05, 1.291476747e-05, 8.570255886e-06, 5.687232260e-06, 3.774054449e-06, 2.504467147e-06,
+        1.661967417e-06, 1.102883630e-06, 7.318749340e-07, 4.856731266e-07, 3.222932889e-07, 2.138742303e-07,
+        1.419272024e-07, 9.418306490e-08};
+    RotaryEmbedding<double> rope(kLlamaHeadDim, 4, kLlamaTheta, Llama3Scaling());
+
+    ASSERT_EQ(hf.size(), kLlamaHeadDim / 2);
+    for (size_t i = 0; i < hf.size(); ++i)
+        EXPECT_NEAR(AngleAtPositionOne(rope, i) / hf[i], 1.0, 1e-6) << "pair " << i;
+}
+
+TEST(RotaryEmbeddingScaling, Llama3KeepsFastPairsAndSlowsDownSlowPairs) {
+    RotaryEmbedding<double> rope(kLlamaHeadDim, 4, kLlamaTheta, Llama3Scaling());
+    const double pi = 3.14159265358979323846;
+
+    for (size_t i = 0; i < kLlamaHeadDim / 2; ++i) {
+        const double plain = Unscaled(i);
+        const double wavelen = 2.0 * pi / plain;
+        const double scaled = AngleAtPositionOne(rope, i);
+        if (wavelen < 2048.0)
+            EXPECT_NEAR(scaled / plain, 1.0, 1e-9) << "fast pair " << i;
+        else if (wavelen > 8192.0)
+            EXPECT_NEAR(scaled / plain, 1.0 / 32.0, 1e-9) << "slow pair " << i;
+        else {
+            EXPECT_LT(scaled, plain) << "blend pair " << i;
+            EXPECT_GT(scaled, plain / 32.0) << "blend pair " << i;
+        }
+    }
+}
+
+TEST(RotaryEmbeddingScaling, Llama3BlendBandFollowsTheFormula) {
+    RotaryEmbedding<double> rope(kLlamaHeadDim, 4, kLlamaTheta, Llama3Scaling());
+    const double pi = 3.14159265358979323846;
+    size_t checked = 0;
+
+    for (size_t i = 0; i < kLlamaHeadDim / 2; ++i) {
+        const double plain = Unscaled(i);
+        const double wavelen = 2.0 * pi / plain;
+        if (wavelen < 2048.0 || wavelen > 8192.0) continue;
+        const double smooth = (8192.0 / wavelen - 1.0) / (4.0 - 1.0);
+        const double expected = (1.0 - smooth) * plain / 32.0 + smooth * plain;
+        EXPECT_NEAR(AngleAtPositionOne(rope, i) / expected, 1.0, 1e-9) << "pair " << i;
+        ++checked;
+    }
+    EXPECT_GT(checked, 0u);
+}
+
+TEST(RotaryEmbeddingScaling, LinearDividesEveryFrequency) {
+    RopeScaling linear;
+    linear.type = RopeScalingType::Linear;
+    linear.factor = 8.0;
+    RotaryEmbedding<double> plain(kLlamaHeadDim, 4, kLlamaTheta);
+    RotaryEmbedding<double> scaled(kLlamaHeadDim, 4, kLlamaTheta, linear);
+
+    for (size_t i = 0; i < kLlamaHeadDim / 2; ++i)
+        EXPECT_NEAR(AngleAtPositionOne(scaled, i) / AngleAtPositionOne(plain, i), 1.0 / 8.0, 1e-9) << "pair " << i;
+}
+
+TEST(RotaryEmbeddingScaling, ScalingStillPreservesRelativePositions) {
+    RotaryEmbedding<float> rope(4, 32, kLlamaTheta, Llama3Scaling());
+    const Tensor<float> q = Vector4(0.3f, -1.2f, 0.7f, 2.0f);
+    const Tensor<float> k = Vector4(-0.5f, 0.4f, 1.1f, -0.9f);
+
+    const double reference = Dot(rope.Apply(q, 3), rope.Apply(k, 0));
+    for (size_t shift : {4u, 11u, 25u})
+        EXPECT_NEAR(Dot(rope.Apply(q, 3 + shift), rope.Apply(k, shift)), reference, 1e-4) << "shift " << shift;
+}
+
+TEST(RotaryEmbeddingScaling, RejectsInvalidLlama3Settings) {
+    RopeScaling zero_factor = Llama3Scaling();
+    zero_factor.factor = 0.0;
+    RopeScaling inverted = Llama3Scaling();
+    inverted.high_freq_factor = inverted.low_freq_factor;
+    RopeScaling no_context = Llama3Scaling();
+    no_context.original_max_position = 0;
+    RopeScaling zero_low = Llama3Scaling();
+    zero_low.low_freq_factor = 0.0;
+
+    for (const RopeScaling& bad : {zero_factor, inverted, no_context, zero_low})
+        EXPECT_THROW(RotaryEmbedding<float>(8, 16, kLlamaTheta, bad), std::invalid_argument);
+}
+
+TEST(RotaryEmbeddingScaling, RejectsInvalidLinearFactor) {
+    RopeScaling linear;
+    linear.type = RopeScalingType::Linear;
+    linear.factor = 0.0;
+
+    EXPECT_THROW(RotaryEmbedding<float>(8, 16, kLlamaTheta, linear), std::invalid_argument);
+}
+
+TEST(RotaryEmbeddingScaling, RejectsTypesThatAreNotImplemented) {
+    for (RopeScalingType type : {RopeScalingType::Dynamic, RopeScalingType::Yarn, RopeScalingType::LongRope,
+                                 RopeScalingType::MRope}) {
+        RopeScaling s;
+        s.type = type;
+        s.factor = 4.0;
+        EXPECT_THROW(RotaryEmbedding<float>(8, 16, kLlamaTheta, s), std::invalid_argument)
+            << "type " << static_cast<int>(type);
+    }
 }

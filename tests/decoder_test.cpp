@@ -360,3 +360,20 @@ TEST(DecoderBlockForward, DoesNotMutateTheInput) {
 
     ExpectNear(x, copy);
 }
+
+TEST(DecoderConstruction, PassesRopeScalingFromTheConfig) {
+    TransformerConfig scaled = LlamaStyle();
+    scaled.rope_theta = 500000.0f;
+    scaled.rope_scaling.type = nn::transformer::config::RopeScalingType::Linear;
+    scaled.rope_scaling.factor = 4.0;
+    TransformerConfig plain = scaled;
+    plain.rope_scaling = {};
+
+    Decoder<float> with_scaling(scaled);
+    Decoder<float> without_scaling(plain);
+
+    const size_t pair = 1;
+    const double scaled_angle = std::atan2(with_scaling.rope->sin(1, pair), with_scaling.rope->cos(1, pair));
+    const double plain_angle = std::atan2(without_scaling.rope->sin(1, pair), without_scaling.rope->cos(1, pair));
+    EXPECT_NEAR(scaled_angle / plain_angle, 0.25, 1e-5);
+}
