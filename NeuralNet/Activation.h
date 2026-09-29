@@ -34,6 +34,22 @@ namespace nn{
   class GELU : public Module<T> {
   public:
     Tensor<T> Forward(const Tensor<T> &input) {
+      constexpr T ONE_OVER_SQRT_2 = T(0.7071067811865476);
+
+      Tensor<T> output = input.Clone();
+
+      std::for_each(output.Data(), output.Data() + output.Size(), [](T &x) {
+        x = T(0.5) * x * (T(1) + std::erf(x * ONE_OVER_SQRT_2));
+      });
+
+      return output;
+    }
+  };
+
+  template <typename T = float>
+  class GELUTanh : public Module<T> {
+  public:
+    Tensor<T> Forward(const Tensor<T> &input) {
       constexpr T SQRT_2_OVER_PI = T(0.7978845608028654);
       constexpr T COEFFICIENT = T(0.044715);
 

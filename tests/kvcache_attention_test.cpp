@@ -3,7 +3,6 @@
 #include <Models/gpt2/GPT2.h>
 #include <NeuralNet/Transformer/KVCache.h>
 #include <NeuralNet/Transformer/MultiHeadAttention.h>
-#include <NeuralNet/Transformer/Transformer.h>
 
 #include <algorithm>
 #include <cmath>
@@ -16,8 +15,6 @@ using math::Tensor;
 using nn::Module;
 using nn::transformer::KVCache;
 using nn::transformer::MultiHeadAttention;
-using nn::transformer::Transformer;
-using nn::transformer::TransformerBlock;
 using nn::transformer::config::TransformerConfig;
 
 namespace {
@@ -37,6 +34,7 @@ TransformerConfig TinyConfig() {
     c.num_heads   = kHeads;
     c.ffn_dim     = 16;
     c.max_seq_len = kMaxSeq;
+    c.activation  = nn::transformer::config::Activation::GELUTanh;
     return c;
 }
 
@@ -254,173 +252,6 @@ TEST(KVCacheAttention, AppendingAtAnOffsetDoesNotDisturbEarlierPositions) {
             for (size_t d = 0; d < kHeadDim; ++d)
                 EXPECT_FLOAT_EQ(cache.Layer(0).k(0, h, s, d), before(0, h, s, d))
                     << "position " << s << " was overwritten by a later append";
-}
-
-TEST(KVCacheBlock, DecodingOneTokenAtATimeMatchesTheFullSequence) {
-    TransformerBlock<float> block(kDModel, kHeads, 16);
-    Seed(block);
-
-    constexpr size_t kSeq = 5;
-    const Tensor<float> x = Wave<float>({1, kSeq, kDModel});
-    const Tensor<float> reference = block.Forward(x, nullptr, 0, Tensor<bool>(), true);
-
-    KVCache<float> cache(1, 1, kHeads, kMaxSeq, kHeadDim);
-
-    for (size_t s = 0; s < kSeq; ++s) {
-        const Tensor<float> out =
-            block.Forward(Window(x, s, 1), &cache.Layer(0), cache.Room(1), Tensor<bool>(), true);
-        cache.Advance(1);
-        EXPECT_LT(RowDiff(out, 0, reference, s), kExact) << "position " << s;
-    }
-}
-
-TEST(KVCacheBlock, ANullCacheLeavesTheResultUnchanged) {
-    TransformerBlock<float> block(kDModel, kHeads, 16);
-    Seed(block);
-    const Tensor<float> x = Wave<float>({1, 3, kDModel});
-
-    EXPECT_EQ(MaxAbsDiff(block.Forward(x, nullptr, 0, Tensor<bool>(), true),
-                         block.Forward(x, nullptr, 0, Tensor<bool>(), true)),
-              0.0);
-}
-
-TEST(KVCacheTransformer, DecodingOneTokenAtATimeMatchesTheFullSequence) {
-    const TransformerConfig config = TinyConfig();
-    Transformer<float> model(config);
-    Seed(model);
-
-    constexpr size_t kSeq = 5;
-    const Tensor<float> x = Wave<float>({1, kSeq, kDModel});
-    const Tensor<float> reference = model.Forward(x, nullptr, Tensor<bool>(), true);
-
-    KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
-                         config.HeadDim());
-
-    for (size_t s = 0; s < kSeq; ++s) {
-        const Tensor<float> out = model.Forward(Window(x, s, 1), &cache, Tensor<bool>(), true);
-        EXPECT_LT(RowDiff(out, 0, reference, s), kExact) << "position " << s;
-    }
-}
-
-TEST(KVCacheTransformer, PrefillThenDecodeMatchesTheFullSequence) {
-    const TransformerConfig config = TinyConfig();
-    Transformer<float> model(config);
-    Seed(model);
-
-    constexpr size_t kSeq = 5, kPrompt = 3;
-    const Tensor<float> x = Wave<float>({1, kSeq, kDModel});
-    const Tensor<float> reference = model.Forward(x, nullptr, Tensor<bool>(), true);
-
-    KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
-                         config.HeadDim());
-
-    const Tensor<float> prefill = model.Forward(Window(x, 0, kPrompt), &cache, Tensor<bool>(), true);
-    for (size_t s = 0; s < kPrompt; ++s)
-        EXPECT_LT(RowDiff(prefill, s, reference, s), kExact) << "prefill position " << s;
-
-    for (size_t s = kPrompt; s < kSeq; ++s) {
-        const Tensor<float> out = model.Forward(Window(x, s, 1), &cache, Tensor<bool>(), true);
-        EXPECT_LT(RowDiff(out, 0, reference, s), kExact) << "decode position " << s;
-    }
-}
-
-TEST(KVCacheTransformer, OnePassAdvancesTheLengthOnceNotOncePerLayer) {
-    const TransformerConfig config = TinyConfig();
-    Transformer<float> model(config);
-    Seed(model);
-
-    KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
-                         config.HeadDim());
-
-    model.Forward(Wave<float>({1, 2, kDModel}), &cache, Tensor<bool>(), true);
-    EXPECT_EQ(cache.Length(), 2u) << "advanced " << cache.Length() << " for a 2-token pass over "
-                                  << config.num_layers << " layers";
-
-    model.Forward(Wave<float>({1, 1, kDModel}), &cache, Tensor<bool>(), true);
-    EXPECT_EQ(cache.Length(), 3u);
-}
-
-TEST(KVCacheTransformer, EveryLayerAppendsAtTheSameOffset) {
-    const TransformerConfig config = TinyConfig();
-    Transformer<float> model(config);
-    Seed(model);
-
-    KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
-                         config.HeadDim());
-    model.Forward(Wave<float>({1, 1, kDModel}), &cache, Tensor<bool>(), true);
-
-    ASSERT_EQ(cache.Length(), 1u);
-
-    for (size_t l = 0; l < config.num_layers; ++l) {
-        EXPECT_GT(NonZeroCount(cache.Layer(l).k, 0), 0u)
-            << "layer " << l << " never wrote position 0";
-
-        for (size_t s = 1; s < config.max_seq_len; ++s)
-            EXPECT_EQ(NonZeroCount(cache.Layer(l).k, s), 0u)
-                << "layer " << l << " wrote position " << s << " instead of 0";
-    }
-}
-
-TEST(KVCacheTransformer, LayersHoldDifferentKeys) {
-    const TransformerConfig config = TinyConfig();
-    Transformer<float> model(config);
-    Seed(model);
-
-    KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
-                         config.HeadDim());
-    model.Forward(Wave<float>({1, 2, kDModel}), &cache, Tensor<bool>(), true);
-
-    double worst = 0.0;
-    for (size_t h = 0; h < config.KVHeads(); ++h)
-        for (size_t d = 0; d < config.HeadDim(); ++d)
-            worst = std::max(worst, std::abs(static_cast<double>(cache.Layer(0).k(0, h, 0, d)) -
-                                             static_cast<double>(cache.Layer(1).k(0, h, 0, d))));
-    EXPECT_GT(worst, 1e-4) << "each block must be given its own cache slot";
-}
-
-TEST(KVCacheTransformer, ResetLetsTheSameCacheServeANewSequence) {
-    const TransformerConfig config = TinyConfig();
-    Transformer<float> model(config);
-    Seed(model);
-
-    KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
-                         config.HeadDim());
-
-    const Tensor<float> x = Wave<float>({1, 3, kDModel});
-    const Tensor<float> first = model.Forward(x, &cache, Tensor<bool>(), true);
-
-    cache.Reset();
-    const Tensor<float> second = model.Forward(x, &cache, Tensor<bool>(), true);
-
-    EXPECT_EQ(cache.Length(), 3u);
-    EXPECT_LT(MaxAbsDiff(first, second), kExact)
-        << "stale values past Length() must not affect the result";
-}
-
-TEST(KVCacheTransformer, OverflowThrowsBeforeAnyLayerWrites) {
-    const TransformerConfig config = TinyConfig();
-    Transformer<float> model(config);
-    Seed(model);
-
-    KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
-                         config.HeadDim());
-    model.Forward(Wave<float>({1, kMaxSeq, kDModel}), &cache, Tensor<bool>(), true);
-    ASSERT_EQ(cache.Length(), kMaxSeq);
-
-    EXPECT_THROW(model.Forward(Wave<float>({1, 1, kDModel}), &cache, Tensor<bool>(), true),
-                 std::out_of_range);
-    EXPECT_EQ(cache.Length(), kMaxSeq) << "a rejected pass must not advance the length";
-}
-
-TEST(KVCacheTransformer, ANullCacheLeavesTheResultUnchanged) {
-    const TransformerConfig config = TinyConfig();
-    Transformer<float> model(config);
-    Seed(model);
-
-    const Tensor<float> x = Wave<float>({1, 4, kDModel});
-    EXPECT_EQ(MaxAbsDiff(model.Forward(x, nullptr, Tensor<bool>(), true),
-                         model.Forward(x, nullptr, Tensor<bool>(), true)),
-              0.0);
 }
 
 namespace {

@@ -23,6 +23,10 @@ using nn::transformer::config::TransformerConfig;
 
 namespace {
 
+const nn::transformer::norm::LayerNorm<float>& AsLayerNorm(const nn::transformer::norm::Norm<float>& norm) {
+    return dynamic_cast<const nn::transformer::norm::LayerNorm<float>&>(norm);
+}
+
 TransformerConfig TinyConfig() {
     TransformerConfig c = models::gpt2::Small();
     c.vocab_size = 11;
@@ -229,7 +233,7 @@ TEST(GPT2Load, TransposesConv1DWeights) {
     llm::LoadGPT2Weights(model, checkpoint);
 
     const Tensor<float>& c_fc = checkpoint.at("h.0.mlp.c_fc.weight");
-    const auto& loaded = *model.transformer->blocks[0]->mlp->Get<0>()->weight;
+    const auto& loaded = *model.transformer->blocks[0]->mlp->up->weight;
     ASSERT_EQ(loaded.Shape(), (std::vector<size_t>{32, 8}));
     for (size_t in = 0; in < 8; ++in)
         for (size_t out = 0; out < 32; ++out)
@@ -265,10 +269,10 @@ TEST(GPT2Load, RenamesLayerNormParameters) {
 
     llm::LoadGPT2Weights(model, checkpoint);
 
-    EXPECT_FLOAT_EQ((*model.transformer->blocks[0]->ln_1->gamma)(0), checkpoint.at("h.0.ln_1.weight")(0));
-    EXPECT_FLOAT_EQ((*model.transformer->blocks[0]->ln_1->beta)(1), checkpoint.at("h.0.ln_1.bias")(1));
-    EXPECT_FLOAT_EQ((*model.transformer->ln_f->gamma)(2), checkpoint.at("ln_f.weight")(2));
-    EXPECT_FLOAT_EQ((*model.transformer->ln_f->beta)(3), checkpoint.at("ln_f.bias")(3));
+    EXPECT_FLOAT_EQ((*AsLayerNorm(*model.transformer->blocks[0]->attenNorm).gamma)(0), checkpoint.at("h.0.ln_1.weight")(0));
+    EXPECT_FLOAT_EQ((*AsLayerNorm(*model.transformer->blocks[0]->attenNorm).beta)(1), checkpoint.at("h.0.ln_1.bias")(1));
+    EXPECT_FLOAT_EQ((*AsLayerNorm(*model.transformer->finalNorm).gamma)(2), checkpoint.at("ln_f.weight")(2));
+    EXPECT_FLOAT_EQ((*AsLayerNorm(*model.transformer->finalNorm).beta)(3), checkpoint.at("ln_f.bias")(3));
 }
 
 TEST(GPT2Load, LoadedParametersDoNotShareStorageWithTheCheckpoint) {
@@ -364,7 +368,7 @@ TEST(GPT2Load, ReadsFromASafetensorsFile) {
     llm::LoadGPT2Weights(model, file.Path());
 
     EXPECT_FLOAT_EQ((*model.wte->weight)(0, 0), 1.01f);
-    EXPECT_FLOAT_EQ((*model.transformer->ln_f->beta)(0), 91.01f);
+    EXPECT_FLOAT_EQ((*AsLayerNorm(*model.transformer->finalNorm).beta)(0), 91.01f);
 }
 
 // --- tokenizer --------------------------------------------------------------

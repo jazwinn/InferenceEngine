@@ -24,7 +24,7 @@ namespace nn::transformer{
     {
     public:
         explicit MLP(const TransformerConfig& cfg):
-            activation(ValidatedActivation(cfg.activation)),
+            activation(cfg.activation),
             up(std::make_shared<Linear<T>>(ValidatedSize(cfg.d_model, "d_model"), ValidatedSize(cfg.ffn_dim, "ffn_dim"), cfg.output_bias)),
             down(std::make_shared<Linear<T>>(cfg.ffn_dim, cfg.d_model, cfg.output_bias))
         {
@@ -53,21 +53,12 @@ namespace nn::transformer{
         {
             switch (kind)
             {
-            case Activation::GELUTanh: return nn::GELU<T>().Forward(x);
+            case Activation::GELUTanh: return nn::GELUTanh<T>().Forward(x);
             case Activation::SiLU:     return nn::SiLU<T>().Forward(x);
             case Activation::ReLU:     return nn::ReLU<T>().Forward(x);
-            case Activation::GELU:     break;
+            case Activation::GELU:     return nn::GELU<T>().Forward(x);
             }
             throw std::invalid_argument("MLP: unsupported activation.");
-        }
-
-        static Activation ValidatedActivation(Activation kind)
-        {
-            if (kind == Activation::GELU)
-            {
-                throw std::invalid_argument("MLP: exact GELU is not implemented; use GELUTanh.");
-            }
-            return kind;
         }
 
         static size_t ValidatedSize(size_t value, const char* name)

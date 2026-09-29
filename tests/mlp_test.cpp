@@ -52,7 +52,8 @@ Tensor<float> Input() {
 }
 
 Tensor<float> Apply(Activation act, const Tensor<float>& x) {
-    if (act == Activation::GELUTanh) return nn::GELU<float>().Forward(x);
+    if (act == Activation::GELUTanh) return nn::GELUTanh<float>().Forward(x);
+    if (act == Activation::GELU) return nn::GELU<float>().Forward(x);
     if (act == Activation::SiLU) return nn::SiLU<float>().Forward(x);
     return nn::ReLU<float>().Forward(x);
 }
@@ -103,10 +104,6 @@ TEST(MLPConstruction, RegistersSubmodulesUnderStableNames) {
     EXPECT_EQ(names, (std::vector<std::string>{"gate.weight", "gate.bias", "up.weight", "up.bias", "down.weight", "down.bias"}));
 }
 
-TEST(MLPConstruction, RejectsExactGELU) {
-    EXPECT_THROW(MLP<float>(Config(MLPType::Standard, Activation::GELU)), std::invalid_argument);
-}
-
 TEST(MLPConstruction, RejectsZeroSizes) {
     EXPECT_THROW(MLP<float>(Config(MLPType::Standard, Activation::ReLU, true, 0, kFfn)), std::invalid_argument);
     EXPECT_THROW(MLP<float>(Config(MLPType::Standard, Activation::ReLU, true, kModel, 0)), std::invalid_argument);
@@ -142,9 +139,10 @@ TEST_P(MLPActivations, GatedComputesDownOfActivatedGateTimesUp) {
 }
 
 INSTANTIATE_TEST_SUITE_P(All, MLPActivations,
-                         ::testing::Values(Activation::GELUTanh, Activation::SiLU, Activation::ReLU),
+                         ::testing::Values(Activation::GELU, Activation::GELUTanh, Activation::SiLU, Activation::ReLU),
                          [](const ::testing::TestParamInfo<Activation>& info) {
                              switch (info.param) {
+                                 case Activation::GELU: return std::string("GELU");
                                  case Activation::GELUTanh: return std::string("GELUTanh");
                                  case Activation::SiLU: return std::string("SiLU");
                                  default: return std::string("ReLU");

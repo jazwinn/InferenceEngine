@@ -17,20 +17,22 @@
 #include <vector>
 
 #include "NeuralNet/Transformer/TransformerConfig.h"
-#include "NeuralNet/Transformer/Transformer.h"
+#include "NeuralNet/Transformer/Decoder.h"
 #include "NeuralNet/Embedding.h"
 #include "NeuralNet/Linear.h"
 #include "NeuralNet/Transformer/Normal/LayerNorm.h"
 #include "Serialize/Safetensors.h"
 #include "NeuralNet/Transformer/KVCache.h"
 
-namespace llm{
+namespace llm
+{
 
     using math::Tensor;
     using nn::transformer::config::TransformerConfig;
-    using nn::transformer::Transformer;
-    using nn::transformer::TransformerBlock;
-    using nn::transformer::MultiHeadAttention;
+    using nn::transformer::Decoder;
+    using nn::transformer::DecoderBlock;
+    using nn::transformer::GroupQueryAttention;
+    using nn::transformer::norm::Norm;
     using nn::transformer::config::PositionEncoding;
     using nn::transformer::KVCache;
     using nn::Module;
@@ -43,7 +45,7 @@ namespace llm{
     public:
         explicit GPT2(TransformerConfig _config):
         config(Validated(std::move(_config))),
-        transformer(std::make_shared<Transformer<T>>(config)),
+        transformer(std::make_shared<Decoder<T>>(config)),
         wte(std::make_shared<Embedding<T>>(config.vocab_size, config.d_model))
         {
             this->RegisterSubmodule("transformer", transformer);
@@ -89,7 +91,7 @@ namespace llm{
         }
 
         TransformerConfig config;
-        std::shared_ptr<Transformer<T>> transformer;
+        std::shared_ptr<Decoder<T>> transformer;
         std::shared_ptr<Embedding<T>> wte;
         std::shared_ptr<Embedding<T>> wpe;
         std::shared_ptr<Linear<T>> lm_head;
@@ -121,7 +123,7 @@ namespace llm{
                 {
                     LoadBlock(*m_model.transformer->blocks[i], "h." + std::to_string(i) + ".");
                 }
-                LoadNorm(*m_model.transformer->ln_f, "ln_f");
+                LoadNorm(*m_model.transformer->finalNorm, "ln_f");
                 if (m_model.lm_head)
                 {
                     Copy(m_model.lm_head->weight, "lm_head.weight", Take("lm_head.weight"));
@@ -154,27 +156,32 @@ namespace llm{
                 }
             }
 
-            void LoadBlock(TransformerBlock<T> &block, const std::string &prefix)
+            void LoadBlock(DecoderBlock<T> &block, const std::string &prefix)
             {
-                LoadNorm(*block.ln_1, prefix + "ln_1");
+                LoadNorm(*block.attenNorm, prefix + "ln_1");
                 LoadAttention(*block.attention, prefix + "attn.");
-                LoadNorm(*block.ln_2, prefix + "ln_2");
+                LoadNorm(*block.mlpNorm, prefix + "ln_2");
                 LoadFeedForward(block, prefix + "mlp.");
             }
 
-            void LoadNorm(LayerNorm<T> &norm, const std::string &prefix)
+            void LoadNorm(Norm<T> &norm, const std::string &prefix)
             {
-                Copy(norm.gamma, prefix + ".weight", Take(prefix + ".weight"));
-                Copy(norm.beta, prefix + ".bias", Take(prefix + ".bias"));
+                auto *layerNorm = dynamic_cast<LayerNorm<T> *>(&norm);
+                if (!layerNorm)
+                {
+                    throw Error("'" + prefix + "' must be a LayerNorm; check the config's norm_type.");
+                }
+                Copy(layerNorm->gamma, prefix + ".weight", Take(prefix + ".weight"));
+                Copy(layerNorm->beta, prefix + ".bias", Take(prefix + ".bias"));
             }
 
-            void LoadAttention(MultiHeadAttention<T> &attention, const std::string &prefix)
+            void LoadAttention(GroupQueryAttention<T> &attention, const std::string &prefix)
             {
                 LoadFusedQKV(attention, prefix);
                 LoadLinear(*attention.output_proj, prefix + "c_proj");
             }
 
-            void LoadFusedQKV(MultiHeadAttention<T> &attention, const std::string &prefix)
+            void LoadFusedQKV(GroupQueryAttention<T> &attention, const std::string &prefix)
             {
                 const size_t d = m_model.config.d_model;
                 const math::Tensor<T> weight = Take(prefix + "c_attn.weight");
@@ -197,10 +204,10 @@ namespace llm{
                 }
             }
 
-            void LoadFeedForward(TransformerBlock<T> &block, const std::string &prefix)
+            void LoadFeedForward(DecoderBlock<T> &block, const std::string &prefix)
             {
-                LoadLinear(*block.mlp->template Get<0>(), prefix + "c_fc");
-                LoadLinear(*block.mlp->template Get<2>(), prefix + "c_proj");
+                LoadLinear(*block.mlp->up, prefix + "c_fc");
+                LoadLinear(*block.mlp->down, prefix + "c_proj");
             }
 
             void LoadLinear(Linear<T> &linear, const std::string &prefix)
