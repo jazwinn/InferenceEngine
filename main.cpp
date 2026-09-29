@@ -1,4 +1,5 @@
 #include "Models/gpt2/GPT2.h"
+#include "Models/CausalModel.h"
 #include "Models/ModelConfigs.h"
 #include "Generation/Sampler.h"
 
@@ -7,7 +8,7 @@
 #include <string>
 #include <vector>
 
-using models::gpt2::GPT2;
+using models::CausalModel;
 using models::gpt2::GPT2Tokenizer;
 using nn::transformer::config::TransformerConfig;
 using nn::transformer::KVCache;
@@ -17,11 +18,11 @@ int main() {
   try {
     const GPT2Tokenizer tokenizer("Models/gpt2/vocab.json", "Models/gpt2/merges.txt");
 
-    GPT2<float> model(models::gpt2::Small());
-    KVCache<float> cache(model.config.num_layers, 1, model.config.KVHeads(),
-                         model.config.max_seq_len, model.config.HeadDim());
+    CausalModel<float> GPT2Model(models::gpt2::Small());
+    KVCache<float> cache(GPT2Model.config.num_layers, 1, GPT2Model.config.KVHeads(),
+                         GPT2Model.config.max_seq_len, GPT2Model.config.HeadDim());
 
-    models::gpt2::LoadGPT2Weights(model, "Models/gpt2/model.safetensors");
+    models::gpt2::LoadGPT2Weights(GPT2Model, "Models/gpt2/model.safetensors");
 
     while (true) {
       std::string input;
@@ -30,7 +31,7 @@ int main() {
 
       std::vector<int64_t> ids = tokenizer.Encode(input);
       if (ids.empty()) continue;
-      if (ids.size() >= model.config.max_seq_len) {
+      if (ids.size() >= GPT2Model.config.max_seq_len) {
         std::cout << "prompt is too long for the context window\n";
         continue;
       }
@@ -42,21 +43,21 @@ int main() {
       math::Tensor<int64_t> prompt({1, ids.size()});
       for (size_t i = 0; i < ids.size(); ++i) prompt(0, i) = ids[i];
 
-      math::Tensor<float> logits = model.Forward(prompt, &cache);
+      math::Tensor<float> logits = GPT2Model.Forward(prompt, &cache);
       size_t last = ids.size() - 1;
 
-      while (ids.size() < model.config.max_seq_len) {
+      while (ids.size() < GPT2Model.config.max_seq_len) {
           const int64_t best = static_cast<int64_t>(greedy.Pick(logits.Row(0).Row(last)));
 
-          if (model.config.IsEos(best)) break;
+          if (GPT2Model.config.IsEos(best)) break;
           ids.push_back(best);
           std::cout << tokenizer.Decode({best}) << std::flush;
 
-          if (ids.size() >= model.config.max_seq_len) break;
+          if (ids.size() >= GPT2Model.config.max_seq_len) break;
 
           math::Tensor<int64_t> next({1, 1});
           next(0, 0) = best;
-          logits = model.Forward(next, &cache);
+          logits = GPT2Model.Forward(next, &cache);
           last   = 0;
       }
 

@@ -1,107 +1,38 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
-#include <optional>
 #include <fstream>
 #include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <stdexcept>
+#include <string>
 #include <string_view>
 #include <unordered_map>
-#include <algorithm>
-#include <memory>
-#include <stdexcept>
 #include <utility>
-#include <set>
-#include <map>
-#include <string>
-#include <array>
 #include <vector>
 
-#include "NeuralNet/Transformer/TransformerConfig.h"
-#include "NeuralNet/Transformer/Decoder.h"
-#include "NeuralNet/Embedding.h"
+#include "Math/Tensor.h"
 #include "NeuralNet/Linear.h"
+#include "NeuralNet/Transformer/Decoder.h"
+#include "NeuralNet/Transformer/GroupQueryAttention.h"
+#include "NeuralNet/Transformer/Normal/Norm.h"
 #include "NeuralNet/Transformer/Normal/LayerNorm.h"
 #include "Serialize/Safetensors.h"
-#include "NeuralNet/Transformer/KVCache.h"
+#include "Models/CausalModel.h"
 
 namespace models::gpt2
 {
 
     using math::Tensor;
-    using nn::transformer::config::TransformerConfig;
-    using nn::transformer::Decoder;
+    using nn::Linear;
     using nn::transformer::DecoderBlock;
     using nn::transformer::GroupQueryAttention;
     using nn::transformer::norm::Norm;
-    using nn::transformer::config::PositionEncoding;
-    using nn::transformer::KVCache;
-    using nn::Module;
-    using nn::Embedding;
-    using nn::Linear;
     using nn::transformer::norm::LayerNorm;
-
-    template <typename T = float>
-    class GPT2 : public Module<T>{
-    public:
-        explicit GPT2(TransformerConfig _config):
-        config(Validated(std::move(_config))),
-        transformer(std::make_shared<Decoder<T>>(config)),
-        wte(std::make_shared<Embedding<T>>(config.vocab_size, config.d_model))
-        {
-            this->RegisterSubmodule("transformer", transformer);
-            this->RegisterSubmodule("wte", wte);
-            if(config.position == PositionEncoding::Learned){
-                wpe = std::make_shared<Embedding<T>>(config.max_seq_len, config.d_model);
-                this->RegisterSubmodule("wpe", wpe);
-            }
-            if(!config.tie_word_embeddings){
-                lm_head = std::make_shared<Linear<T>>(config.d_model, config.vocab_size, false);
-                this->RegisterSubmodule("lm_head", lm_head);
-            }
-        }
-
-        Tensor<T> Forward(const Tensor<int64_t>& ids, KVCache<T>* cache = nullptr, size_t start_pos = 0){
-
-            if (ids.Rank() != 2)
-                throw std::invalid_argument("GPT2: ids must be a [batch, seq] tensor.");
-
-            const size_t seq = ids.Shape()[1];
-
-            // A cache already knows how far the sequence has got, so it is the
-            // single source of truth for absolute positions; start_pos applies
-            // only to uncached calls. Otherwise every decoded token would be
-            // given wpe[0] and the positional encoding would silently vanish.
-            const size_t first = cache ? cache->Length() : start_pos;
-            if (first + seq > config.max_seq_len)
-                throw std::invalid_argument("GPT2: sequence exceeds max_seq_len.");
-
-            Tensor<T> x = wte->Forward(ids);
-            if(wpe != nullptr){
-                Tensor<int64_t> positions({seq});
-                for (size_t i = 0; i < seq; ++i) positions(i) = static_cast<int64_t>(first + i);
-                x = x + wpe->Forward(positions);
-            }
-
-            Tensor<T> h = transformer->Forward(x, cache, Tensor<bool>(), config.causal);
-
-            if(lm_head != nullptr){
-                return lm_head->Forward(h);
-            }
-            return math::MatMul(h, wte->weight->Transpose());
-        }
-
-        TransformerConfig config;
-        std::shared_ptr<Decoder<T>> transformer;
-        std::shared_ptr<Embedding<T>> wte;
-        std::shared_ptr<Embedding<T>> wpe;
-        std::shared_ptr<Linear<T>> lm_head;
-
-    private:
-        static TransformerConfig Validated(TransformerConfig c){
-            c.Validate();
-            return c;
-        }
-    };
 
     namespace detail
     {
@@ -111,7 +42,7 @@ namespace models::gpt2
         public:
             using Weights = std::map<std::string, math::Tensor<T>>;
 
-            GPT2WeightLoader(GPT2<T> &model, Weights weights)
+            GPT2WeightLoader(CausalModel<T> &model, Weights weights)
                 : m_model(model), m_weights(Normalise(std::move(weights)))
             {
             }
@@ -274,7 +205,7 @@ namespace models::gpt2
                 return text + "]";
             }
 
-            GPT2<T> &m_model;
+            CausalModel<T> &m_model;
             Weights m_weights;
             std::set<std::string> m_used;
             size_t m_filled = 0;
@@ -282,13 +213,13 @@ namespace models::gpt2
     }
 
     template <typename T>
-    void LoadGPT2Weights(GPT2<T> &model, std::map<std::string, math::Tensor<T>> weights)
+    void LoadGPT2Weights(CausalModel<T> &model, std::map<std::string, math::Tensor<T>> weights)
     {
         detail::GPT2WeightLoader<T>(model, std::move(weights)).Load();
     }
 
     template <typename T>
-    void LoadGPT2Weights(GPT2<T> &model, const std::string &path)
+    void LoadGPT2Weights(CausalModel<T> &model, const std::string &path)
     {
         LoadGPT2Weights(model, serialize::ReadSafetensors<T>(path));
     }

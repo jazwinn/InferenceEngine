@@ -16,7 +16,7 @@
 #include <stdexcept>
 #include <vector>
 
-using models::gpt2::GPT2;
+using models::CausalModel;
 using models::gpt2::GPT2Tokenizer;
 using math::Tensor;
 using nn::transformer::config::TransformerConfig;
@@ -63,11 +63,11 @@ TEST(GPT2Construction, SmallPresetPassesValidation) {
 TEST(GPT2Construction, RejectsAnInvalidConfig) {
     TransformerConfig c = TinyConfig();
     c.vocab_size = 0;
-    EXPECT_THROW(GPT2<float>{c}, std::invalid_argument);
+    EXPECT_THROW(CausalModel<float>{c}, std::invalid_argument);
 }
 
 TEST(GPT2Construction, BuildsFromTheConfig) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
 
     EXPECT_EQ(model.config.d_model, 8u);
     EXPECT_EQ(model.wte->weight->Shape(), (std::vector<size_t>{11, 8}));
@@ -80,7 +80,7 @@ TEST(GPT2Construction, BuildsFromTheConfig) {
 TEST(GPT2Construction, UntiedBuildsABiasFreeHead) {
     TransformerConfig c = TinyConfig();
     c.tie_word_embeddings = false;
-    GPT2<float> model(c);
+    CausalModel<float> model(c);
 
     ASSERT_TRUE(model.lm_head);
     EXPECT_EQ(model.lm_head->weight->Shape(), (std::vector<size_t>{11, 8}));
@@ -88,26 +88,26 @@ TEST(GPT2Construction, UntiedBuildsABiasFreeHead) {
 }
 
 TEST(GPT2Forward, GivesLogitsForEveryPosition) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     Seed(model);
 
     EXPECT_EQ(model.Forward(Ids(2, 4)).Shape(), (std::vector<size_t>{2, 4, 11}));
 }
 
 TEST(GPT2Forward, RejectsIdsThatAreNot2D) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     EXPECT_THROW(model.Forward(Tensor<int64_t>({4}, 1)), std::invalid_argument);
 }
 
 TEST(GPT2Forward, RejectsSequencesPastMaxSeqLen) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     EXPECT_NO_THROW(model.Forward(Ids(1, 6)));
     EXPECT_THROW(model.Forward(Ids(1, 7)), std::invalid_argument);
     EXPECT_THROW(model.Forward(Ids(1, 2), nullptr, 5), std::invalid_argument);
 }
 
 TEST(GPT2Forward, StartPosShiftsThePositions) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     Seed(model);
 
     const Tensor<float> a = model.Forward(Ids(1, 2), nullptr, 0);
@@ -119,7 +119,7 @@ TEST(GPT2Forward, StartPosShiftsThePositions) {
 }
 
 TEST(GPT2Parameters, SmallMatchesTheReleasedModelSize) {
-    GPT2<float> model(models::gpt2::Small());
+    CausalModel<float> model(models::gpt2::Small());
 
     size_t total = 0;
     for (const auto& p : model.NamedParameters()) total += p.tensor->Size();
@@ -202,7 +202,7 @@ Weights TinyCheckpoint(const nn::transformer::config::TransformerConfig& c = Tin
 }  // namespace
 
 TEST(GPT2Load, FillsEveryParameter) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
 
     models::gpt2::LoadGPT2Weights(model, TinyCheckpoint());
 
@@ -214,7 +214,7 @@ TEST(GPT2Load, FillsEveryParameter) {
 }
 
 TEST(GPT2Load, CopiesTheEmbeddingsAsTheyAre) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     const Weights checkpoint = TinyCheckpoint();
 
     models::gpt2::LoadGPT2Weights(model, checkpoint);
@@ -227,7 +227,7 @@ TEST(GPT2Load, CopiesTheEmbeddingsAsTheyAre) {
 
 TEST(GPT2Load, TransposesConv1DWeights) {
     // c_fc is [d, 4d] in the file and [4d, d] in the model.
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     const Weights checkpoint = TinyCheckpoint();
 
     models::gpt2::LoadGPT2Weights(model, checkpoint);
@@ -241,7 +241,7 @@ TEST(GPT2Load, TransposesConv1DWeights) {
 }
 
 TEST(GPT2Load, SplitsFusedQKVInOrder) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     const Weights checkpoint = TinyCheckpoint();
 
     models::gpt2::LoadGPT2Weights(model, checkpoint);
@@ -264,7 +264,7 @@ TEST(GPT2Load, SplitsFusedQKVInOrder) {
 }
 
 TEST(GPT2Load, RenamesLayerNormParameters) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     const Weights checkpoint = TinyCheckpoint();
 
     models::gpt2::LoadGPT2Weights(model, checkpoint);
@@ -276,7 +276,7 @@ TEST(GPT2Load, RenamesLayerNormParameters) {
 }
 
 TEST(GPT2Load, LoadedParametersDoNotShareStorageWithTheCheckpoint) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     Weights checkpoint = TinyCheckpoint();
 
     models::gpt2::LoadGPT2Weights(model, checkpoint);
@@ -286,7 +286,7 @@ TEST(GPT2Load, LoadedParametersDoNotShareStorageWithTheCheckpoint) {
 }
 
 TEST(GPT2Load, AcceptsTheTransformerPrefixAndSkipsMaskBuffers) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     Weights prefixed;
     for (const auto& [name, tensor] : TinyCheckpoint()) prefixed.emplace("transformer." + name, tensor);
     prefixed.emplace("transformer.h.0.attn.bias", Numbered({6, 6}, 0.5f));
@@ -299,7 +299,7 @@ TEST(GPT2Load, AcceptsTheTransformerPrefixAndSkipsMaskBuffers) {
 TEST(GPT2Load, LoadsAnUntiedHead) {
     nn::transformer::config::TransformerConfig c = TinyConfig();
     c.tie_word_embeddings = false;
-    GPT2<float> model(c);
+    CausalModel<float> model(c);
     Weights checkpoint = TinyCheckpoint(c);
     checkpoint.emplace("lm_head.weight", Numbered({c.vocab_size, c.d_model}, 5.0f));
 
@@ -309,7 +309,7 @@ TEST(GPT2Load, LoadsAnUntiedHead) {
 }
 
 TEST(GPT2Load, ChangesTheOutput) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     const Tensor<float> before = model.Forward(Ids(1, 3));
 
     models::gpt2::LoadGPT2Weights(model, TinyCheckpoint());
@@ -322,7 +322,7 @@ TEST(GPT2Load, ChangesTheOutput) {
 }
 
 TEST(GPT2Load, RejectsAMissingTensor) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     Weights checkpoint = TinyCheckpoint();
     checkpoint.erase("h.1.mlp.c_proj.bias");
 
@@ -330,7 +330,7 @@ TEST(GPT2Load, RejectsAMissingTensor) {
 }
 
 TEST(GPT2Load, RejectsAWrongShape) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     Weights checkpoint = TinyCheckpoint();
     checkpoint.at("h.0.mlp.c_fc.weight") = Numbered({8, 16}, 1.0f);   // should be [8, 32]
 
@@ -338,7 +338,7 @@ TEST(GPT2Load, RejectsAWrongShape) {
 }
 
 TEST(GPT2Load, RejectsAWrongSizedFusedQKV) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     Weights checkpoint = TinyCheckpoint();
     checkpoint.at("h.0.attn.c_attn.weight") = Numbered({8, 16}, 1.0f);   // should be [8, 24]
 
@@ -346,7 +346,7 @@ TEST(GPT2Load, RejectsAWrongSizedFusedQKV) {
 }
 
 TEST(GPT2Load, RejectsAnUnusedTensor) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     Weights checkpoint = TinyCheckpoint();
     checkpoint.emplace("h.0.attn.c_attn.extra", Numbered({4}, 1.0f));
 
@@ -354,7 +354,7 @@ TEST(GPT2Load, RejectsAnUnusedTensor) {
 }
 
 TEST(GPT2Load, RejectsACheckpointForADifferentLayerCount) {
-    GPT2<float> model(TinyConfig());        // 2 layers
+    CausalModel<float> model(TinyConfig());        // 2 layers
     nn::transformer::config::TransformerConfig deeper = TinyConfig();
     deeper.num_layers = 3;
 
@@ -362,7 +362,7 @@ TEST(GPT2Load, RejectsACheckpointForADifferentLayerCount) {
 }
 
 TEST(GPT2Load, ReadsFromASafetensorsFile) {
-    GPT2<float> model(TinyConfig());
+    CausalModel<float> model(TinyConfig());
     const TempSafetensors file(TinyCheckpoint());
 
     models::gpt2::LoadGPT2Weights(model, file.Path());

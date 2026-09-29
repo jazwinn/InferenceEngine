@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <vector>
 
-using models::gpt2::GPT2;
+using models::CausalModel;
 using math::Tensor;
 using nn::Module;
 using nn::transformer::KVCache;
@@ -278,7 +278,7 @@ int64_t ArgMax(const Tensor<float>& logits, size_t position, size_t vocab) {
 
 TEST(KVCacheGPT2, DecodingOneTokenAtATimeMatchesTheFullSequence) {
     const TransformerConfig config = TinyGPT2Config();
-    GPT2<float> model(config);
+    CausalModel<float> model(config);
     Seed(model);
     ASSERT_NE(model.wpe, nullptr) << "this test is meaningless without learned positions";
 
@@ -299,7 +299,7 @@ TEST(KVCacheGPT2, DecodingOneTokenAtATimeMatchesTheFullSequence) {
 
 TEST(KVCacheGPT2, PrefillThenDecodeMatchesTheFullSequence) {
     const TransformerConfig config = TinyGPT2Config();
-    GPT2<float> model(config);
+    CausalModel<float> model(config);
     Seed(model);
 
     constexpr size_t kSeq = 5, kPrompt = 3;
@@ -326,7 +326,7 @@ TEST(KVCacheGPT2, PrefillThenDecodeMatchesTheFullSequence) {
 
 TEST(KVCacheGPT2, PositionActuallyChangesTheLogits) {
     const TransformerConfig config = TinyGPT2Config();
-    GPT2<float> model(config);
+    CausalModel<float> model(config);
     Seed(model);
 
     Tensor<int64_t> same({1, 2});
@@ -340,7 +340,7 @@ TEST(KVCacheGPT2, PositionActuallyChangesTheLogits) {
 
 TEST(KVCacheGPT2, GreedyDecodingPicksTheSameTokensWithAndWithoutACache) {
     const TransformerConfig config = TinyGPT2Config();
-    GPT2<float> model(config);
+    CausalModel<float> model(config);
     Seed(model);
 
     const size_t prompt_len = 2;
