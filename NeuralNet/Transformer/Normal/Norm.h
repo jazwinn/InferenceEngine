@@ -1,8 +1,9 @@
 #pragma once
 
+#include "Math/Tensor.h"
 #include "NeuralNet/Module.h"
 
-namespace nn::transformer::normal
+namespace nn::transformer::norm
 {
     using nn::Module;
     using math::Tensor;

@@ -10,7 +10,7 @@
 #include "NeuralNet/Module.h"
 #include "NeuralNet/Transformer/Normal/Norm.h"
 
-namespace nn::transformer::normal{
+namespace nn::transformer::norm{
 
     template <typename T = float>
     class LayerNorm : public Norm<T>{

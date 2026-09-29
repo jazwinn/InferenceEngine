@@ -10,7 +10,7 @@
 
 using math::Tensor;
 using nn::Module;
-using nn::transformer::normal::RMSNorm;
+using nn::transformer::norm::RMSNorm;
 
 namespace {
 

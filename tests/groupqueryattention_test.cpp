@@ -16,9 +16,9 @@ using math::Tensor;
 using nn::transformer::GroupQueryAttention;
 using nn::transformer::KVCache;
 using nn::transformer::MultiHeadAttention;
-using nn::transformer::PositionEncoding;
+using nn::transformer::config::PositionEncoding;
 using nn::transformer::RotaryEmbedding;
-using nn::transformer::TransformerConfig;
+using nn::transformer::config::TransformerConfig;
 
 namespace {
 

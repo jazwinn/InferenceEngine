@@ -16,6 +16,8 @@ namespace nn::transformer{
     using nn::Module;
     using math::Tensor;
     using math::CopyInto;
+    using nn::transformer::config::TransformerConfig;
+    using nn::transformer::config::PositionEncoding;
 
 
     template <typename T = float>

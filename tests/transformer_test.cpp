@@ -15,7 +15,7 @@ using math::Tensor;
 using nn::Module;
 using nn::transformer::Transformer;
 using nn::transformer::TransformerBlock;
-using nn::transformer::TransformerConfig;
+using nn::transformer::config::TransformerConfig;
 
 namespace {
 

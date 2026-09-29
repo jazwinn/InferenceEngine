@@ -19,7 +19,7 @@
 using llm::GPT2;
 using llm::GPT2Tokenizer;
 using math::Tensor;
-using nn::transformer::TransformerConfig;
+using nn::transformer::config::TransformerConfig;
 
 namespace {
 
@@ -167,7 +167,7 @@ private:
 
 // A checkpoint matching TinyConfig(), in GPT-2's own layout: Conv1D weights are
 // [in, out] and q/k/v share one c_attn matrix.
-Weights TinyCheckpoint(const nn::transformer::TransformerConfig& c = TinyConfig()) {
+Weights TinyCheckpoint(const nn::transformer::config::TransformerConfig& c = TinyConfig()) {
     Weights w;
     w.emplace("wte.weight", Numbered({c.vocab_size, c.d_model}, 1.0f));
     w.emplace("wpe.weight", Numbered({c.max_seq_len, c.d_model}, 2.0f));
@@ -293,7 +293,7 @@ TEST(GPT2Load, AcceptsTheTransformerPrefixAndSkipsMaskBuffers) {
 }
 
 TEST(GPT2Load, LoadsAnUntiedHead) {
-    nn::transformer::TransformerConfig c = TinyConfig();
+    nn::transformer::config::TransformerConfig c = TinyConfig();
     c.tie_word_embeddings = false;
     GPT2<float> model(c);
     Weights checkpoint = TinyCheckpoint(c);
@@ -351,7 +351,7 @@ TEST(GPT2Load, RejectsAnUnusedTensor) {
 
 TEST(GPT2Load, RejectsACheckpointForADifferentLayerCount) {
     GPT2<float> model(TinyConfig());        // 2 layers
-    nn::transformer::TransformerConfig deeper = TinyConfig();
+    nn::transformer::config::TransformerConfig deeper = TinyConfig();
     deeper.num_layers = 3;
 
     EXPECT_THROW(llm::LoadGPT2Weights(model, TinyCheckpoint(deeper)), std::runtime_error);

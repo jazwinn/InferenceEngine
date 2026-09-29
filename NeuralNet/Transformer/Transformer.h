@@ -18,7 +18,8 @@ namespace nn::transformer
     using math::Tensor;
     using nn::Module;
     using nn::Linear;
-    using nn::transformer::normal::LayerNorm;
+    using nn::transformer::norm::LayerNorm;
+    using nn::transformer::config::TransformerConfig;
     using nn::Sequential;
     using nn::GELU;
 
@@ -29,9 +30,9 @@ namespace nn::transformer
         using FeedForward = Sequential<T, Linear<T>, GELU<T>, Linear<T>>;
 
         TransformerBlock(size_t d_model, size_t num_heads, size_t d_ff, T eps = T(1e-5))
-        : ln_1(std::make_shared<nn::transformer::normal::LayerNorm<T>>(d_model, eps)),
+        : ln_1(std::make_shared<nn::transformer::norm::LayerNorm<T>>(d_model, eps)),
           attention(std::make_shared<MultiHeadAttention<T>>(d_model, num_heads)),
-          ln_2(std::make_shared<nn::transformer::normal::LayerNorm<T>>(d_model, eps)),
+          ln_2(std::make_shared<nn::transformer::norm::LayerNorm<T>>(d_model, eps)),
           mlp(std::make_shared<FeedForward>(nn::Linear<T>(d_model, d_ff), nn::GELU<T>(), nn::Linear<T>(d_ff, d_model)))
         {
             this->RegisterSubmodule("ln_1", ln_1);
@@ -48,9 +49,9 @@ namespace nn::transformer
             return output;
         }
 
-        std::shared_ptr<nn::transformer::normal::LayerNorm<T>> ln_1;
+        std::shared_ptr<nn::transformer::norm::LayerNorm<T>> ln_1;
         std::shared_ptr<MultiHeadAttention<T>> attention;
-        std::shared_ptr<nn::transformer::normal::LayerNorm<T>> ln_2;
+        std::shared_ptr<nn::transformer::norm::LayerNorm<T>> ln_2;
         std::shared_ptr<FeedForward> mlp;
     };
 
@@ -60,7 +61,7 @@ namespace nn::transformer
     public:
         explicit Transformer(TransformerConfig _config) : 
         config(std::move(_config)),
-        ln_f(std::make_shared<nn::transformer::normal::LayerNorm<T>>(config.d_model, config.norm_eps))
+        ln_f(std::make_shared<nn::transformer::norm::LayerNorm<T>>(config.d_model, config.norm_eps))
         {
             blocks.reserve(config.num_layers);
             for (size_t i = 0; i < this->config.num_layers; ++i)
@@ -96,7 +97,7 @@ namespace nn::transformer
         TransformerConfig config;
 
         std::vector<std::shared_ptr<TransformerBlock<T>>> blocks;
-        std::shared_ptr<nn::transformer::normal::LayerNorm<T>> ln_f;
+        std::shared_ptr<nn::transformer::norm::LayerNorm<T>> ln_f;
     };
 
 }

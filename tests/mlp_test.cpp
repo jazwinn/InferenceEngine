@@ -8,10 +8,10 @@
 #include <vector>
 
 using math::Tensor;
-using nn::transformer::Activation;
+using nn::transformer::config::Activation;
 using nn::transformer::MLP;
-using nn::transformer::MLPType;
-using nn::transformer::TransformerConfig;
+using nn::transformer::config::MLPType;
+using nn::transformer::config::TransformerConfig;
 
 namespace {
 

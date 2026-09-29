@@ -5,7 +5,7 @@
 #include <optional>
 #include <stdexcept>
 
-namespace nn::transformer
+namespace nn::transformer::config
 {
     enum class NormType          { LayerNorm, RMSNorm };
     enum class NormPlacement     { Pre, Post };

@@ -9,7 +9,7 @@
 
 using llm::GPT2;
 using llm::GPT2Tokenizer;
-using nn::transformer::TransformerConfig;
+using nn::transformer::config::TransformerConfig;
 using nn::transformer::KVCache;
 using generation::Greedy;
 

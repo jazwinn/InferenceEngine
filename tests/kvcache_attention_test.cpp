@@ -18,7 +18,7 @@ using nn::transformer::KVCache;
 using nn::transformer::MultiHeadAttention;
 using nn::transformer::Transformer;
 using nn::transformer::TransformerBlock;
-using nn::transformer::TransformerConfig;
+using nn::transformer::config::TransformerConfig;
 
 namespace {
 constexpr size_t kDModel  = 8;
@@ -426,7 +426,7 @@ TEST(KVCacheTransformer, ANullCacheLeavesTheResultUnchanged) {
 namespace {
 TransformerConfig TinyGPT2Config() {
     TransformerConfig c = TinyConfig();
-    c.position = nn::transformer::PositionEncoding::Learned;
+    c.position = nn::transformer::config::PositionEncoding::Learned;
     return c;
 }
 

@@ -27,16 +27,16 @@
 namespace llm{
 
     using math::Tensor;
-    using nn::transformer::TransformerConfig;
+    using nn::transformer::config::TransformerConfig;
     using nn::transformer::Transformer;
     using nn::transformer::TransformerBlock;
     using nn::transformer::MultiHeadAttention;
-    using nn::transformer::PositionEncoding;
+    using nn::transformer::config::PositionEncoding;
     using nn::transformer::KVCache;
     using nn::Module;
     using nn::Embedding;
     using nn::Linear;
-    using nn::transformer::normal::LayerNorm;
+    using nn::transformer::norm::LayerNorm;
 
     template <typename T = float>
     class GPT2 : public Module<T>{

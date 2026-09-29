@@ -15,6 +15,9 @@ namespace nn::transformer{
     using math::Tensor;
     using nn::Module;
     using nn::Linear;
+    using nn::transformer::config::TransformerConfig;
+    using nn::transformer::config::MLPType;
+    using nn::transformer::config::Activation;
 
     template <typename T = float>
     class MLP: public Module<T>

@@ -4,8 +4,8 @@
 
 namespace models::gpt2 {
 
-    using nn::transformer::TransformerConfig;
-    using nn::transformer::Activation;
+    using nn::transformer::config::TransformerConfig;
+    using nn::transformer::config::Activation;
 
 
     inline TransformerConfig Small() {

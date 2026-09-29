@@ -9,7 +9,7 @@
 #include <vector>
 
 using math::Tensor;
-using nn::transformer::normal::LayerNorm;
+using nn::transformer::norm::LayerNorm;
 using nn::Module;
 
 namespace {
