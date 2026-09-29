@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
+#include <vector>
+#include <algorithm>
 
 namespace nn::transformer::config
 {
@@ -51,11 +53,12 @@ namespace nn::transformer::config
 
         // special tokens (optional: not every model has all of them)
         std::optional<int64_t> bos_token_id;
-        std::optional<int64_t> eos_token_id;
+        std::vector<int64_t>   eos_token_ids;
         std::optional<int64_t> pad_token_id;
 
         size_t KVHeads() const { return num_kv_heads ? num_kv_heads : num_heads; }
         size_t HeadDim() const { return head_dim ? head_dim : d_model / num_heads; }
+        bool   IsEos(int64_t id) const { return std::find(eos_token_ids.begin(), eos_token_ids.end(), id) != eos_token_ids.end(); }
         void   Validate() const;   // throws on inconsistent values
     };
 

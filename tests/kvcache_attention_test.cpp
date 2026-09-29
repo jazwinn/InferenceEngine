@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <vector>
 
-using llm::GPT2;
+using models::gpt2::GPT2;
 using math::Tensor;
 using nn::Module;
 using nn::transformer::KVCache;

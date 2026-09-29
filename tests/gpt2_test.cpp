@@ -16,8 +16,8 @@
 #include <stdexcept>
 #include <vector>
 
-using llm::GPT2;
-using llm::GPT2Tokenizer;
+using models::gpt2::GPT2;
+using models::gpt2::GPT2Tokenizer;
 using math::Tensor;
 using nn::transformer::config::TransformerConfig;
 
@@ -204,7 +204,7 @@ Weights TinyCheckpoint(const nn::transformer::config::TransformerConfig& c = Tin
 TEST(GPT2Load, FillsEveryParameter) {
     GPT2<float> model(TinyConfig());
 
-    llm::LoadGPT2Weights(model, TinyCheckpoint());
+    models::gpt2::LoadGPT2Weights(model, TinyCheckpoint());
 
     for (const auto& p : model.NamedParameters()) {
         bool all_zero = true;
@@ -217,7 +217,7 @@ TEST(GPT2Load, CopiesTheEmbeddingsAsTheyAre) {
     GPT2<float> model(TinyConfig());
     const Weights checkpoint = TinyCheckpoint();
 
-    llm::LoadGPT2Weights(model, checkpoint);
+    models::gpt2::LoadGPT2Weights(model, checkpoint);
 
     const Tensor<float>& wte = checkpoint.at("wte.weight");
     EXPECT_EQ(model.wte->weight->Shape(), wte.Shape());
@@ -230,7 +230,7 @@ TEST(GPT2Load, TransposesConv1DWeights) {
     GPT2<float> model(TinyConfig());
     const Weights checkpoint = TinyCheckpoint();
 
-    llm::LoadGPT2Weights(model, checkpoint);
+    models::gpt2::LoadGPT2Weights(model, checkpoint);
 
     const Tensor<float>& c_fc = checkpoint.at("h.0.mlp.c_fc.weight");
     const auto& loaded = *model.transformer->blocks[0]->mlp->up->weight;
@@ -244,7 +244,7 @@ TEST(GPT2Load, SplitsFusedQKVInOrder) {
     GPT2<float> model(TinyConfig());
     const Weights checkpoint = TinyCheckpoint();
 
-    llm::LoadGPT2Weights(model, checkpoint);
+    models::gpt2::LoadGPT2Weights(model, checkpoint);
 
     const Tensor<float>& fused = checkpoint.at("h.1.attn.c_attn.weight");
     const Tensor<float>& fused_bias = checkpoint.at("h.1.attn.c_attn.bias");
@@ -267,7 +267,7 @@ TEST(GPT2Load, RenamesLayerNormParameters) {
     GPT2<float> model(TinyConfig());
     const Weights checkpoint = TinyCheckpoint();
 
-    llm::LoadGPT2Weights(model, checkpoint);
+    models::gpt2::LoadGPT2Weights(model, checkpoint);
 
     EXPECT_FLOAT_EQ((*AsLayerNorm(*model.transformer->blocks[0]->attenNorm).gamma)(0), checkpoint.at("h.0.ln_1.weight")(0));
     EXPECT_FLOAT_EQ((*AsLayerNorm(*model.transformer->blocks[0]->attenNorm).beta)(1), checkpoint.at("h.0.ln_1.bias")(1));
@@ -279,7 +279,7 @@ TEST(GPT2Load, LoadedParametersDoNotShareStorageWithTheCheckpoint) {
     GPT2<float> model(TinyConfig());
     Weights checkpoint = TinyCheckpoint();
 
-    llm::LoadGPT2Weights(model, checkpoint);
+    models::gpt2::LoadGPT2Weights(model, checkpoint);
     checkpoint.at("wte.weight").Fill(-1.0f);
 
     EXPECT_NE((*model.wte->weight)(0, 0), -1.0f);
@@ -292,7 +292,7 @@ TEST(GPT2Load, AcceptsTheTransformerPrefixAndSkipsMaskBuffers) {
     prefixed.emplace("transformer.h.0.attn.bias", Numbered({6, 6}, 0.5f));
     prefixed.emplace("transformer.h.1.attn.masked_bias", Numbered({1}, 0.5f));
 
-    EXPECT_NO_THROW(llm::LoadGPT2Weights(model, prefixed));
+    EXPECT_NO_THROW(models::gpt2::LoadGPT2Weights(model, prefixed));
     EXPECT_FLOAT_EQ((*model.wte->weight)(0, 0), 1.01f);
 }
 
@@ -303,7 +303,7 @@ TEST(GPT2Load, LoadsAnUntiedHead) {
     Weights checkpoint = TinyCheckpoint(c);
     checkpoint.emplace("lm_head.weight", Numbered({c.vocab_size, c.d_model}, 5.0f));
 
-    llm::LoadGPT2Weights(model, checkpoint);
+    models::gpt2::LoadGPT2Weights(model, checkpoint);
 
     EXPECT_FLOAT_EQ((*model.lm_head->weight)(0, 0), 5.01f);
 }
@@ -312,7 +312,7 @@ TEST(GPT2Load, ChangesTheOutput) {
     GPT2<float> model(TinyConfig());
     const Tensor<float> before = model.Forward(Ids(1, 3));
 
-    llm::LoadGPT2Weights(model, TinyCheckpoint());
+    models::gpt2::LoadGPT2Weights(model, TinyCheckpoint());
     const Tensor<float> after = model.Forward(Ids(1, 3));
 
     float largest = 0.0f;
@@ -326,7 +326,7 @@ TEST(GPT2Load, RejectsAMissingTensor) {
     Weights checkpoint = TinyCheckpoint();
     checkpoint.erase("h.1.mlp.c_proj.bias");
 
-    EXPECT_THROW(llm::LoadGPT2Weights(model, checkpoint), std::runtime_error);
+    EXPECT_THROW(models::gpt2::LoadGPT2Weights(model, checkpoint), std::runtime_error);
 }
 
 TEST(GPT2Load, RejectsAWrongShape) {
@@ -334,7 +334,7 @@ TEST(GPT2Load, RejectsAWrongShape) {
     Weights checkpoint = TinyCheckpoint();
     checkpoint.at("h.0.mlp.c_fc.weight") = Numbered({8, 16}, 1.0f);   // should be [8, 32]
 
-    EXPECT_THROW(llm::LoadGPT2Weights(model, checkpoint), std::runtime_error);
+    EXPECT_THROW(models::gpt2::LoadGPT2Weights(model, checkpoint), std::runtime_error);
 }
 
 TEST(GPT2Load, RejectsAWrongSizedFusedQKV) {
@@ -342,7 +342,7 @@ TEST(GPT2Load, RejectsAWrongSizedFusedQKV) {
     Weights checkpoint = TinyCheckpoint();
     checkpoint.at("h.0.attn.c_attn.weight") = Numbered({8, 16}, 1.0f);   // should be [8, 24]
 
-    EXPECT_THROW(llm::LoadGPT2Weights(model, checkpoint), std::runtime_error);
+    EXPECT_THROW(models::gpt2::LoadGPT2Weights(model, checkpoint), std::runtime_error);
 }
 
 TEST(GPT2Load, RejectsAnUnusedTensor) {
@@ -350,7 +350,7 @@ TEST(GPT2Load, RejectsAnUnusedTensor) {
     Weights checkpoint = TinyCheckpoint();
     checkpoint.emplace("h.0.attn.c_attn.extra", Numbered({4}, 1.0f));
 
-    EXPECT_THROW(llm::LoadGPT2Weights(model, checkpoint), std::runtime_error);
+    EXPECT_THROW(models::gpt2::LoadGPT2Weights(model, checkpoint), std::runtime_error);
 }
 
 TEST(GPT2Load, RejectsACheckpointForADifferentLayerCount) {
@@ -358,14 +358,14 @@ TEST(GPT2Load, RejectsACheckpointForADifferentLayerCount) {
     nn::transformer::config::TransformerConfig deeper = TinyConfig();
     deeper.num_layers = 3;
 
-    EXPECT_THROW(llm::LoadGPT2Weights(model, TinyCheckpoint(deeper)), std::runtime_error);
+    EXPECT_THROW(models::gpt2::LoadGPT2Weights(model, TinyCheckpoint(deeper)), std::runtime_error);
 }
 
 TEST(GPT2Load, ReadsFromASafetensorsFile) {
     GPT2<float> model(TinyConfig());
     const TempSafetensors file(TinyCheckpoint());
 
-    llm::LoadGPT2Weights(model, file.Path());
+    models::gpt2::LoadGPT2Weights(model, file.Path());
 
     EXPECT_FLOAT_EQ((*model.wte->weight)(0, 0), 1.01f);
     EXPECT_FLOAT_EQ((*AsLayerNorm(*model.transformer->finalNorm).beta)(0), 91.01f);

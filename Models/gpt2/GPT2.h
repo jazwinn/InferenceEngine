@@ -24,7 +24,7 @@
 #include "Serialize/Safetensors.h"
 #include "NeuralNet/Transformer/KVCache.h"
 
-namespace llm
+namespace models::gpt2
 {
 
     using math::Tensor;

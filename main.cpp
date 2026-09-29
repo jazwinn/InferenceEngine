@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-using llm::GPT2;
-using llm::GPT2Tokenizer;
+using models::gpt2::GPT2;
+using models::gpt2::GPT2Tokenizer;
 using nn::transformer::config::TransformerConfig;
 using nn::transformer::KVCache;
 using generation::Greedy;
@@ -21,7 +21,7 @@ int main() {
     KVCache<float> cache(model.config.num_layers, 1, model.config.KVHeads(),
                          model.config.max_seq_len, model.config.HeadDim());
 
-    llm::LoadGPT2Weights(model, "Models/gpt2/model.safetensors");
+    models::gpt2::LoadGPT2Weights(model, "Models/gpt2/model.safetensors");
 
     while (true) {
       std::string input;
@@ -48,7 +48,7 @@ int main() {
       while (ids.size() < model.config.max_seq_len) {
           const int64_t best = static_cast<int64_t>(greedy.Pick(logits.Row(0).Row(last)));
 
-          if (model.config.eos_token_id && best == *model.config.eos_token_id) break;
+          if (model.config.IsEos(best)) break;
           ids.push_back(best);
           std::cout << tokenizer.Decode({best}) << std::flush;
 
