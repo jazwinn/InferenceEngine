@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <NeuralNet/Module.h>
-#include <NeuralNet/RMSNorm.h>
+#include <NeuralNet/Transformer/Normal/RMSNorm.h>
 
 #include <cmath>
 #include <memory>
@@ -10,7 +10,7 @@
 
 using math::Tensor;
 using nn::Module;
-using nn::RMSNorm;
+using nn::transformer::normal::RMSNorm;
 
 namespace {
 

@@ -8,10 +8,11 @@
 #include "Math/Tensor.h"
 #include "NeuralNet/Activation.h"
 
-namespace transformer{
+namespace nn::transformer
+{
 
     using math::Tensor;
-    using activation::Softmax;
+    using nn::Softmax;
     
     inline size_t ValidatedDivide(size_t numerator, size_t denominator)
     {

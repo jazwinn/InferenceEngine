@@ -7,12 +7,13 @@
 #include <vector>
 
 #include "Math/Tensor.h"
-#include "Module.h"
+#include "NeuralNet/Module.h"
+#include "NeuralNet/Transformer/Normal/Norm.h"
 
-namespace nn{
+namespace nn::transformer::normal{
 
     template <typename T = float>
-    class LayerNorm : public Module<T>{
+    class LayerNorm : public Norm<T>{
     public:
         explicit LayerNorm(std::vector<size_t> normalized_shape, T epsilon = static_cast<T>(1e-5)) :
             m_normalized_shape(std::move(normalized_shape)),
@@ -55,7 +56,7 @@ namespace nn{
             this->RegisterParameter("beta", beta);
         }
 
-        Tensor<T> Forward(const Tensor<T>& input) {
+        Tensor<T> Forward(const Tensor<T>& input) override{
             const std::vector<size_t>& shape = input.Shape();
             const size_t axes = m_normalized_shape.size();
 

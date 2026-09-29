@@ -20,23 +20,23 @@
 #include "NeuralNet/Transformer/Transformer.h"
 #include "NeuralNet/Embedding.h"
 #include "NeuralNet/Linear.h"
-#include "NeuralNet/LayerNorm.h"
+#include "NeuralNet/Transformer/Normal/LayerNorm.h"
 #include "Serialize/Safetensors.h"
 #include "NeuralNet/Transformer/KVCache.h"
 
 namespace llm{
 
     using math::Tensor;
-    using transformer::TransformerConfig;
-    using transformer::Transformer;
-    using transformer::TransformerBlock;
-    using transformer::MultiHeadAttention;
-    using transformer::PositionEncoding;
-    using transformer::KVCache;
+    using nn::transformer::TransformerConfig;
+    using nn::transformer::Transformer;
+    using nn::transformer::TransformerBlock;
+    using nn::transformer::MultiHeadAttention;
+    using nn::transformer::PositionEncoding;
+    using nn::transformer::KVCache;
     using nn::Module;
     using nn::Embedding;
     using nn::Linear;
-    using nn::LayerNorm;
+    using nn::transformer::normal::LayerNorm;
 
     template <typename T = float>
     class GPT2 : public Module<T>{

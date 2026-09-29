@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <NeuralNet/LayerNorm.h>
+#include <NeuralNet/Transformer/Normal/LayerNorm.h>
 #include <NeuralNet/Module.h>
 
 #include <cmath>
@@ -9,7 +9,7 @@
 #include <vector>
 
 using math::Tensor;
-using nn::LayerNorm;
+using nn::transformer::normal::LayerNorm;
 using nn::Module;
 
 namespace {

@@ -13,12 +13,12 @@
 #include <vector>
 
 using math::Tensor;
-using transformer::GroupQueryAttention;
-using transformer::KVCache;
-using transformer::MultiHeadAttention;
-using transformer::PositionEncoding;
-using transformer::RotaryEmbedding;
-using transformer::TransformerConfig;
+using nn::transformer::GroupQueryAttention;
+using nn::transformer::KVCache;
+using nn::transformer::MultiHeadAttention;
+using nn::transformer::PositionEncoding;
+using nn::transformer::RotaryEmbedding;
+using nn::transformer::TransformerConfig;
 
 namespace {
 
@@ -498,9 +498,9 @@ TEST_P(GroupQueryAttentionRopeHeads, CachedKeysAreStoredRotated) {
     KVCache<float> cache(1, kBatch, attn.numHeadsKV, kMaxSeq, attn.headDim);
     attn.Forward(x, &cache.Layer(0), 0, Tensor<bool>(), true);
 
-    Tensor<float> raw = transformer::SplitHeads(attn.key->Forward(x), attn.numHeadsKV, attn.headDim);
+    Tensor<float> raw = nn::transformer::SplitHeads(attn.key->Forward(x), attn.numHeadsKV, attn.headDim);
     ExpectNear(cache.Layer(0).k.Slice(2, 0, kSeq), rope->Apply(raw, 0));
-    Tensor<float> raw_v = transformer::SplitHeads(attn.value->Forward(x), attn.numHeadsKV, attn.headDim);
+    Tensor<float> raw_v = nn::transformer::SplitHeads(attn.value->Forward(x), attn.numHeadsKV, attn.headDim);
     ExpectNear(cache.Layer(0).v.Slice(2, 0, kSeq), raw_v);
 }
 

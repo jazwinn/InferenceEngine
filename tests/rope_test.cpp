@@ -7,7 +7,7 @@
 #include <vector>
 
 using math::Tensor;
-using transformer::RotaryEmbedding;
+using nn::transformer::RotaryEmbedding;
 
 namespace {
 

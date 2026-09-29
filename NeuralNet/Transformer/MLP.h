@@ -10,7 +10,7 @@
 #include "NeuralNet/Activation.h"
 #include "NeuralNet/Transformer/TransformerConfig.h"
 
-namespace transformer{
+namespace nn::transformer{
 
     using math::Tensor;
     using nn::Module;
@@ -50,9 +50,9 @@ namespace transformer{
         {
             switch (kind)
             {
-            case Activation::GELUTanh: return ::activation::GELU<T>().Forward(x);
-            case Activation::SiLU:     return ::activation::SiLU<T>().Forward(x);
-            case Activation::ReLU:     return ::activation::ReLU<T>().Forward(x);
+            case Activation::GELUTanh: return nn::GELU<T>().Forward(x);
+            case Activation::SiLU:     return nn::SiLU<T>().Forward(x);
+            case Activation::ReLU:     return nn::ReLU<T>().Forward(x);
             case Activation::GELU:     break;
             }
             throw std::invalid_argument("MLP: unsupported activation.");

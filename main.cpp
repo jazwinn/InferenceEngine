@@ -9,8 +9,8 @@
 
 using llm::GPT2;
 using llm::GPT2Tokenizer;
-using transformer::TransformerConfig;
-using transformer::KVCache;
+using nn::transformer::TransformerConfig;
+using nn::transformer::KVCache;
 using generation::Greedy;
 
 int main() {

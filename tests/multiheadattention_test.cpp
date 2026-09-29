@@ -12,8 +12,8 @@
 
 using math::Tensor;
 using nn::Module;
-using transformer::MultiHeadAttention;
-using transformer::SplitHeads;
+using nn::transformer::MultiHeadAttention;
+using nn::transformer::SplitHeads;
 
 namespace {
 
@@ -69,7 +69,7 @@ Tensor<T> WeightsOf(MultiHeadAttention<T>& attn, const Tensor<T>& x, bool causal
             for (size_t j = i + 1; j < seq; ++j) mask(i, j) = true;
         scores = scores.MaskedFill(mask, -std::numeric_limits<T>::infinity());
     }
-    return activation::Softmax<T>(-1).Forward(scores);
+    return nn::Softmax<T>(-1).Forward(scores);
 }
 
 
@@ -483,7 +483,7 @@ TEST(MultiHeadAttentionMask, MaskedKeysGetZeroWeight) {
     Tensor<bool> mask({4, 4}, false);
     for (size_t i = 0; i < 4; ++i) mask(i, 1) = true;
 
-    const Tensor<float> w = activation::Softmax<float>(-1).Forward(
+    const Tensor<float> w = nn::Softmax<float>(-1).Forward(
         scores.MaskedFill(mask, -std::numeric_limits<float>::infinity()));
 
     for (size_t h = 0; h < 2; ++h)

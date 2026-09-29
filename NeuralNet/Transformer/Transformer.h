@@ -10,17 +10,17 @@
 #include "MultiHeadAttention.h"
 #include "NeuralNet/Sequential.h"
 #include "NeuralNet/Activation.h"
-#include "NeuralNet/LayerNorm.h"
+#include "NeuralNet/Transformer/Normal/LayerNorm.h"
 #include "NeuralNet/Transformer/KVCache.h"
 
-namespace transformer
+namespace nn::transformer
 {
     using math::Tensor;
     using nn::Module;
     using nn::Linear;
-    using nn::LayerNorm;
+    using nn::transformer::normal::LayerNorm;
     using nn::Sequential;
-    using activation::GELU;
+    using nn::GELU;
 
     template <typename T>
     class TransformerBlock : public Module<T>
@@ -29,10 +29,10 @@ namespace transformer
         using FeedForward = Sequential<T, Linear<T>, GELU<T>, Linear<T>>;
 
         TransformerBlock(size_t d_model, size_t num_heads, size_t d_ff, T eps = T(1e-5))
-        : ln_1(std::make_shared<nn::LayerNorm<T>>(d_model, eps)),
+        : ln_1(std::make_shared<nn::transformer::normal::LayerNorm<T>>(d_model, eps)),
           attention(std::make_shared<MultiHeadAttention<T>>(d_model, num_heads)),
-          ln_2(std::make_shared<nn::LayerNorm<T>>(d_model, eps)),
-          mlp(std::make_shared<FeedForward>(nn::Linear<T>(d_model, d_ff), activation::GELU<T>(), nn::Linear<T>(d_ff, d_model)))
+          ln_2(std::make_shared<nn::transformer::normal::LayerNorm<T>>(d_model, eps)),
+          mlp(std::make_shared<FeedForward>(nn::Linear<T>(d_model, d_ff), nn::GELU<T>(), nn::Linear<T>(d_ff, d_model)))
         {
             this->RegisterSubmodule("ln_1", ln_1);
             this->RegisterSubmodule("attn", attention);
@@ -48,9 +48,9 @@ namespace transformer
             return output;
         }
 
-        std::shared_ptr<nn::LayerNorm<T>> ln_1;
+        std::shared_ptr<nn::transformer::normal::LayerNorm<T>> ln_1;
         std::shared_ptr<MultiHeadAttention<T>> attention;
-        std::shared_ptr<nn::LayerNorm<T>> ln_2;
+        std::shared_ptr<nn::transformer::normal::LayerNorm<T>> ln_2;
         std::shared_ptr<FeedForward> mlp;
     };
 
@@ -60,7 +60,7 @@ namespace transformer
     public:
         explicit Transformer(TransformerConfig _config) : 
         config(std::move(_config)),
-        ln_f(std::make_shared<nn::LayerNorm<T>>(config.d_model, config.norm_eps))
+        ln_f(std::make_shared<nn::transformer::normal::LayerNorm<T>>(config.d_model, config.norm_eps))
         {
             blocks.reserve(config.num_layers);
             for (size_t i = 0; i < this->config.num_layers; ++i)
@@ -96,7 +96,7 @@ namespace transformer
         TransformerConfig config;
 
         std::vector<std::shared_ptr<TransformerBlock<T>>> blocks;
-        std::shared_ptr<nn::LayerNorm<T>> ln_f;
+        std::shared_ptr<nn::transformer::normal::LayerNorm<T>> ln_f;
     };
 
 }

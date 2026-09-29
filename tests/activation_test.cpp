@@ -10,13 +10,13 @@
 #include <string>
 #include <vector>
 
-using activation::GELU;
-using activation::ReLU;
-using activation::Sigmoid;
-using activation::SiLU;
-using activation::Softmax;
-using activation::SwiGLU;
-using activation::Tanh;
+using nn::GELU;
+using nn::ReLU;
+using nn::Sigmoid;
+using nn::SiLU;
+using nn::Softmax;
+using nn::SwiGLU;
+using nn::Tanh;
 using math::Tensor;
 using nn::Module;
 

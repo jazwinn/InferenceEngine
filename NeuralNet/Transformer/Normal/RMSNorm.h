@@ -1,12 +1,13 @@
 #pragma once
 
 #include "Math/Tensor.h"
-#include "Module.h"
+#include "NeuralNet/Module.h"
+#include "NeuralNet/Transformer/Normal/Norm.h"
 
-namespace nn {
+namespace nn::transformer::normal {
 
     template <typename T = float>
-    class RMSNorm : public Module<T> {
+    class RMSNorm : public Norm<T> {
     public:
         RMSNorm(size_t size, T epsilon = static_cast<T>(1e-8)) :
             weight(std::make_shared<Tensor<T>>(std::vector<size_t>{size}, T(1))),

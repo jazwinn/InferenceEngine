@@ -7,11 +7,11 @@
 #include <vector>
 
 using math::Tensor;
-using transformer::MergeHeads;
-using transformer::NormalizeMask;
-using transformer::SDPA;
-using transformer::SplitHeads;
-using transformer::ValidatedDivide;
+using nn::transformer::MergeHeads;
+using nn::transformer::NormalizeMask;
+using nn::transformer::SDPA;
+using nn::transformer::SplitHeads;
+using nn::transformer::ValidatedDivide;
 
 namespace {
 

@@ -8,10 +8,10 @@
 #include <vector>
 
 using math::Tensor;
-using transformer::Activation;
-using transformer::MLP;
-using transformer::MLPType;
-using transformer::TransformerConfig;
+using nn::transformer::Activation;
+using nn::transformer::MLP;
+using nn::transformer::MLPType;
+using nn::transformer::TransformerConfig;
 
 namespace {
 
@@ -52,9 +52,9 @@ Tensor<float> Input() {
 }
 
 Tensor<float> Apply(Activation act, const Tensor<float>& x) {
-    if (act == Activation::GELUTanh) return activation::GELU<float>().Forward(x);
-    if (act == Activation::SiLU) return activation::SiLU<float>().Forward(x);
-    return activation::ReLU<float>().Forward(x);
+    if (act == Activation::GELUTanh) return nn::GELU<float>().Forward(x);
+    if (act == Activation::SiLU) return nn::SiLU<float>().Forward(x);
+    return nn::ReLU<float>().Forward(x);
 }
 
 void ExpectNear(const Tensor<float>& actual, const Tensor<float>& expected) {

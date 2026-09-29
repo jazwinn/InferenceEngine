@@ -12,8 +12,8 @@
 #include <type_traits>
 #include <vector>
 
-using activation::GELU;
-using activation::ReLU;
+using nn::GELU;
+using nn::ReLU;
 using math::Tensor;
 using nn::Linear;
 using nn::Module;

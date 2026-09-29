@@ -10,7 +10,7 @@
 #include "NeuralNet/Transformer/AttentionOps.h"
 #include "NeuralNet/Transformer/TransformerConfig.h"
 
-namespace transformer{
+namespace nn::transformer{
 
     using nn::Linear;
     using nn::Module;

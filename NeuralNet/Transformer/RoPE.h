@@ -6,7 +6,7 @@
 
 #include "Math/Tensor.h"
 
-namespace transformer{
+namespace nn::transformer{
 
     using math::Tensor;
 

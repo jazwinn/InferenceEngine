@@ -6,7 +6,7 @@
 #include <vector>
 
 using math::Tensor;
-using transformer::KVCache;
+using nn::transformer::KVCache;
 
 namespace {
 

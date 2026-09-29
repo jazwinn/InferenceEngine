@@ -15,7 +15,7 @@
 #include "NeuralNet/Transformer/AttentionOps.h"
 
 
-namespace transformer
+namespace nn::transformer
 {
 
     using math::Tensor;
@@ -23,7 +23,7 @@ namespace transformer
     using math::CopyInto;
     using nn::Module;
     using nn::Linear;
-    using activation::Softmax;
+    using nn::Softmax;
 
     template <typename T = float>
     class MultiHeadAttention : public Module<T>

@@ -8,7 +8,7 @@
 #include "Module.h"
 #include "Linear.h"
 
-namespace activation {
+namespace nn{
 
   using math::Tensor;
   using nn::Module;

@@ -14,11 +14,11 @@
 using llm::GPT2;
 using math::Tensor;
 using nn::Module;
-using transformer::KVCache;
-using transformer::MultiHeadAttention;
-using transformer::Transformer;
-using transformer::TransformerBlock;
-using transformer::TransformerConfig;
+using nn::transformer::KVCache;
+using nn::transformer::MultiHeadAttention;
+using nn::transformer::Transformer;
+using nn::transformer::TransformerBlock;
+using nn::transformer::TransformerConfig;
 
 namespace {
 constexpr size_t kDModel  = 8;
@@ -192,8 +192,8 @@ TEST(KVCacheAttention, CacheHoldsExactlyTheProjectedKeysAndValues) {
     attn.Forward(x, &cache.Layer(0), 0, Tensor<bool>(), true);
     cache.Advance(3);
 
-    const Tensor<float> K = transformer::SplitHeads(attn.key->Forward(x), attn.num_heads, attn.head_dim);
-    const Tensor<float> V = transformer::SplitHeads(attn.value->Forward(x), attn.num_heads, attn.head_dim);
+    const Tensor<float> K = nn::transformer::SplitHeads(attn.key->Forward(x), attn.num_heads, attn.head_dim);
+    const Tensor<float> V = nn::transformer::SplitHeads(attn.value->Forward(x), attn.num_heads, attn.head_dim);
 
     for (size_t h = 0; h < kHeads; ++h)
         for (size_t s = 0; s < 3; ++s)
@@ -426,7 +426,7 @@ TEST(KVCacheTransformer, ANullCacheLeavesTheResultUnchanged) {
 namespace {
 TransformerConfig TinyGPT2Config() {
     TransformerConfig c = TinyConfig();
-    c.position = transformer::PositionEncoding::Learned;
+    c.position = nn::transformer::PositionEncoding::Learned;
     return c;
 }
 
