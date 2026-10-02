@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <Models/gpt2/GPT2.h>
+#include <Models/CausalModel.h>
 #include <NeuralNet/Transformer/KVCache.h>
 #include <NeuralNet/Transformer/MultiHeadAttention.h>
 

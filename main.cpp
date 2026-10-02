@@ -1,6 +1,8 @@
-#include "Models/gpt2/GPT2.h"
 #include "Models/CausalModel.h"
 #include "Models/ModelConfigs.h"
+#include "Models/Tokenizer.h"
+#include "Models/gpt2/Checkpoint.h"
+#include "Models/WeightLoader.h"
 #include "Generation/Sampler.h"
 
 #include <exception>
@@ -9,20 +11,22 @@
 #include <vector>
 
 using models::CausalModel;
-using models::gpt2::GPT2Tokenizer;
 using nn::transformer::config::TransformerConfig;
 using nn::transformer::KVCache;
 using generation::Greedy;
+using models::Tokenizer;
+using models::gpt2::ReadCheckpoint;
+using models::LoadWeights;
 
 int main() {
   try {
-    const GPT2Tokenizer tokenizer("Models/gpt2/vocab.json", "Models/gpt2/merges.txt");
+    const Tokenizer tokenizer = Tokenizer::FromFile("Models/gpt2/tokenizer.json");
 
     CausalModel<float> GPT2Model(models::gpt2::Small());
     KVCache<float> cache(GPT2Model.config.num_layers, 1, GPT2Model.config.KVHeads(),
                          GPT2Model.config.max_seq_len, GPT2Model.config.HeadDim());
-
-    models::gpt2::LoadGPT2Weights(GPT2Model, "Models/gpt2/model.safetensors");
+    LoadWeights<float>(GPT2Model, ReadCheckpoint<float>("Models/gpt2/model.safetensors"));
+                    
 
     while (true) {
       std::string input;
