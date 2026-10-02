@@ -25,12 +25,14 @@ add_subdirectory(Math)
 add_subdirectory(NeuralNet)
 add_subdirectory(Reflection)
 add_subdirectory(Serialize)
+add_subdirectory(Models)
 
 add_executable(inference main.cpp)
 target_link_libraries(inference PRIVATE
     InferenceEngine::Generation
     InferenceEngine::NeuralNet
     InferenceEngine::Serialize
+    InferenceEngine::Models
 )
 
 include(CTest)

@@ -5,6 +5,7 @@
   "builtin-baseline": "522253caf47268c1724f486a035e927a42a90092",
   "dependencies": [
     "gtest",
-    "nlohmann-json"
+    "nlohmann-json",
+    "pcre2"
   ]
 }

@@ -1,0 +1,1540 @@
+{
+ "llama": [
+  {
+   "text": "Hello world",
+   "ids": [
+    128000,
+    9906,
+    1917
+   ],
+   "ids_no_special": [
+    9906,
+    1917
+   ],
+   "decoded": "Hello world",
+   "decoded_skip": "Hello world"
+  },
+  {
+   "text": "Hello, world!",
+   "ids": [
+    128000,
+    9906,
+    11,
+    1917,
+    0
+   ],
+   "ids_no_special": [
+    9906,
+    11,
+    1917,
+    0
+   ],
+   "decoded": "Hello, world!",
+   "decoded_skip": "Hello, world!"
+  },
+  {
+   "text": "I'LL do it, you'll see. Don't, can't, WE'RE",
+   "ids": [
+    128000,
+    40,
+    6,
+    4178,
+    656,
+    433,
+    11,
+    499,
+    3358,
+    1518,
+    13,
+    4418,
+    956,
+    11,
+    649,
+    956,
+    11,
+    20255,
+    95253
+   ],
+   "ids_no_special": [
+    40,
+    6,
+    4178,
+    656,
+    433,
+    11,
+    499,
+    3358,
+    1518,
+    13,
+    4418,
+    956,
+    11,
+    649,
+    956,
+    11,
+    20255,
+    95253
+   ],
+   "decoded": "I'LL do it, you'll see. Don't, can't, WE'RE",
+   "decoded_skip": "I'LL do it, you'll see. Don't, can't, WE'RE"
+  },
+  {
+   "text": "12345 678 9 1234567",
+   "ids": [
+    128000,
+    4513,
+    1774,
+    220,
+    17458,
+    220,
+    24,
+    220,
+    4513,
+    10961,
+    22
+   ],
+   "ids_no_special": [
+    4513,
+    1774,
+    220,
+    17458,
+    220,
+    24,
+    220,
+    4513,
+    10961,
+    22
+   ],
+   "decoded": "12345 678 9 1234567",
+   "decoded_skip": "12345 678 9 1234567"
+  },
+  {
+   "text": "$100.00!!! 3.14159",
+   "ids": [
+    128000,
+    3,
+    1041,
+    13,
+    410,
+    12340,
+    220,
+    18,
+    13,
+    9335,
+    2946
+   ],
+   "ids_no_special": [
+    3,
+    1041,
+    13,
+    410,
+    12340,
+    220,
+    18,
+    13,
+    9335,
+    2946
+   ],
+   "decoded": "$100.00!!! 3.14159",
+   "decoded_skip": "$100.00!!! 3.14159"
+  },
+  {
+   "text": "  multiple   spaces  ",
+   "ids": [
+    128000,
+    220,
+    5361,
+    256,
+    12908,
+    256
+   ],
+   "ids_no_special": [
+    220,
+    5361,
+    256,
+    12908,
+    256
+   ],
+   "decoded": "  multiple   spaces  ",
+   "decoded_skip": "  multiple   spaces  "
+  },
+  {
+   "text": " leading",
+   "ids": [
+    128000,
+    6522
+   ],
+   "ids_no_special": [
+    6522
+   ],
+   "decoded": " leading",
+   "decoded_skip": " leading"
+  },
+  {
+   "text": "trailing ",
+   "ids": [
+    128000,
+    376,
+    14612,
+    220
+   ],
+   "ids_no_special": [
+    376,
+    14612,
+    220
+   ],
+   "decoded": "trailing ",
+   "decoded_skip": "trailing "
+  },
+  {
+   "text": "line1\nline2\n\n\tindented\r\nwindows",
+   "ids": [
+    128000,
+    1074,
+    16,
+    198,
+    1074,
+    17,
+    271,
+    197,
+    485,
+    16243,
+    319,
+    28176
+   ],
+   "ids_no_special": [
+    1074,
+    16,
+    198,
+    1074,
+    17,
+    271,
+    197,
+    485,
+    16243,
+    319,
+    28176
+   ],
+   "decoded": "line1\nline2\n\n\tindented\r\nwindows",
+   "decoded_skip": "line1\nline2\n\n\tindented\r\nwindows"
+  },
+  {
+   "text": "emoji 🙂👍🏽 done",
+   "ids": [
+    128000,
+    38623,
+    28584,
+    9468,
+    239,
+    235,
+    9468,
+    237,
+    121,
+    2884
+   ],
+   "ids_no_special": [
+    38623,
+    28584,
+    9468,
+    239,
+    235,
+    9468,
+    237,
+    121,
+    2884
+   ],
+   "decoded": "emoji 🙂👍🏽 done",
+   "decoded_skip": "emoji 🙂👍🏽 done"
+  },
+  {
+   "text": "日本語のテキスト、そして中文。",
+   "ids": [
+    128000,
+    102433,
+    102158,
+    16144,
+    57933,
+    62903,
+    71634,
+    5486,
+    80539,
+    108891,
+    1811
+   ],
+   "ids_no_special": [
+    102433,
+    102158,
+    16144,
+    57933,
+    62903,
+    71634,
+    5486,
+    80539,
+    108891,
+    1811
+   ],
+   "decoded": "日本語のテキスト、そして中文。",
+   "decoded_skip": "日本語のテキスト、そして中文。"
+  },
+  {
+   "text": "naïve café résumé Ünïcödé",
+   "ids": [
+    128000,
+    3458,
+    38672,
+    588,
+    53050,
+    9517,
+    1264,
+    978,
+    105766,
+    38672,
+    66,
+    3029,
+    67,
+    978
+   ],
+   "ids_no_special": [
+    3458,
+    38672,
+    588,
+    53050,
+    9517,
+    1264,
+    978,
+    105766,
+    38672,
+    66,
+    3029,
+    67,
+    978
+   ],
+   "decoded": "naïve café résumé Ünïcödé",
+   "decoded_skip": "naïve café résumé Ünïcödé"
+  },
+  {
+   "text": "def f(x):\n    return x**2  # comment\n",
+   "ids": [
+    128000,
+    755,
+    282,
+    2120,
+    997,
+    262,
+    471,
+    865,
+    334,
+    17,
+    220,
+    674,
+    4068,
+    198
+   ],
+   "ids_no_special": [
+    755,
+    282,
+    2120,
+    997,
+    262,
+    471,
+    865,
+    334,
+    17,
+    220,
+    674,
+    4068,
+    198
+   ],
+   "decoded": "def f(x):\n    return x**2  # comment\n",
+   "decoded_skip": "def f(x):\n    return x**2  # comment\n"
+  },
+  {
+   "text": "http://example.com/a?b=c&d=e",
+   "ids": [
+    128000,
+    1277,
+    1129,
+    8858,
+    916,
+    14520,
+    30,
+    65,
+    20105,
+    5,
+    67,
+    41491
+   ],
+   "ids_no_special": [
+    1277,
+    1129,
+    8858,
+    916,
+    14520,
+    30,
+    65,
+    20105,
+    5,
+    67,
+    41491
+   ],
+   "decoded": "http://example.com/a?b=c&d=e",
+   "decoded_skip": "http://example.com/a?b=c&d=e"
+  },
+  {
+   "text": "a",
+   "ids": [
+    128000,
+    64
+   ],
+   "ids_no_special": [
+    64
+   ],
+   "decoded": "a",
+   "decoded_skip": "a"
+  },
+  {
+   "text": " ",
+   "ids": [
+    128000,
+    220
+   ],
+   "ids_no_special": [
+    220
+   ],
+   "decoded": " ",
+   "decoded_skip": " "
+  },
+  {
+   "text": "\n",
+   "ids": [
+    128000,
+    198
+   ],
+   "ids_no_special": [
+    198
+   ],
+   "decoded": "\n",
+   "decoded_skip": "\n"
+  },
+  {
+   "text": "\n\n\n",
+   "ids": [
+    128000,
+    1432
+   ],
+   "ids_no_special": [
+    1432
+   ],
+   "decoded": "\n\n\n",
+   "decoded_skip": "\n\n\n"
+  },
+  {
+   "text": "    ",
+   "ids": [
+    128000,
+    257
+   ],
+   "ids_no_special": [
+    257
+   ],
+   "decoded": "    ",
+   "decoded_skip": "    "
+  },
+  {
+   "text": "😀",
+   "ids": [
+    128000,
+    76460,
+    222
+   ],
+   "ids_no_special": [
+    76460,
+    222
+   ],
+   "decoded": "😀",
+   "decoded_skip": "😀"
+  },
+  {
+   "text": "ÀÁÂÃÄÅ",
+   "ids": [
+    128000,
+    73053,
+    44801,
+    33895,
+    19321,
+    88075,
+    106453
+   ],
+   "ids_no_special": [
+    73053,
+    44801,
+    33895,
+    19321,
+    88075,
+    106453
+   ],
+   "decoded": "ÀÁÂÃÄÅ",
+   "decoded_skip": "ÀÁÂÃÄÅ"
+  },
+  {
+   "text": "привет мир",
+   "ids": [
+    128000,
+    8164,
+    105251,
+    8341,
+    115388
+   ],
+   "ids_no_special": [
+    8164,
+    105251,
+    8341,
+    115388
+   ],
+   "decoded": "привет мир",
+   "decoded_skip": "привет мир"
+  },
+  {
+   "text": "<|begin_of_text|>Hi<|eot_id|>",
+   "ids": [
+    128000,
+    128000,
+    13347,
+    128009
+   ],
+   "ids_no_special": [
+    128000,
+    13347,
+    128009
+   ],
+   "decoded": "<|begin_of_text|>Hi<|eot_id|>",
+   "decoded_skip": "Hi"
+  },
+  {
+   "text": "x<|eot_id|>y",
+   "ids": [
+    128000,
+    87,
+    128009,
+    88
+   ],
+   "ids_no_special": [
+    87,
+    128009,
+    88
+   ],
+   "decoded": "x<|eot_id|>y",
+   "decoded_skip": "xy"
+  },
+  {
+   "text": "<|start_header_id|>user<|end_header_id|>\n\nWhat is 2+2?<|eot_id|>",
+   "ids": [
+    128000,
+    128006,
+    882,
+    128007,
+    271,
+    3923,
+    374,
+    220,
+    17,
+    10,
+    17,
+    30,
+    128009
+   ],
+   "ids_no_special": [
+    128006,
+    882,
+    128007,
+    271,
+    3923,
+    374,
+    220,
+    17,
+    10,
+    17,
+    30,
+    128009
+   ],
+   "decoded": "<|start_header_id|>user<|end_header_id|>\n\nWhat is 2+2?<|eot_id|>",
+   "decoded_skip": "user\n\nWhat is 2+2?"
+  },
+  {
+   "text": "<|endoftext|>after",
+   "ids": [
+    128000,
+    27,
+    91,
+    8862,
+    728,
+    428,
+    91,
+    29,
+    10924
+   ],
+   "ids_no_special": [
+    27,
+    91,
+    8862,
+    728,
+    428,
+    91,
+    29,
+    10924
+   ],
+   "decoded": "<|endoftext|>after",
+   "decoded_skip": "<|endoftext|>after"
+  },
+  {
+   "text": "before<|endoftext|>",
+   "ids": [
+    128000,
+    15145,
+    27,
+    91,
+    8862,
+    728,
+    428,
+    91,
+    29
+   ],
+   "ids_no_special": [
+    15145,
+    27,
+    91,
+    8862,
+    728,
+    428,
+    91,
+    29
+   ],
+   "decoded": "before<|endoftext|>",
+   "decoded_skip": "before<|endoftext|>"
+  },
+  {
+   "text": "tab\tseparated\tvalues",
+   "ids": [
+    128000,
+    6323,
+    85786,
+    50700,
+    47039
+   ],
+   "ids_no_special": [
+    6323,
+    85786,
+    50700,
+    47039
+   ],
+   "decoded": "tab\tseparated\tvalues",
+   "decoded_skip": "tab\tseparated\tvalues"
+  },
+  {
+   "text": "CamelCaseIdentifierWithNumbers123",
+   "ids": [
+    128000,
+    26479,
+    301,
+    4301,
+    8887,
+    2409,
+    28336,
+    4513
+   ],
+   "ids_no_special": [
+    26479,
+    301,
+    4301,
+    8887,
+    2409,
+    28336,
+    4513
+   ],
+   "decoded": "CamelCaseIdentifierWithNumbers123",
+   "decoded_skip": "CamelCaseIdentifierWithNumbers123"
+  },
+  {
+   "text": "'s 's 'S",
+   "ids": [
+    128000,
+    596,
+    364,
+    82,
+    364,
+    50
+   ],
+   "ids_no_special": [
+    596,
+    364,
+    82,
+    364,
+    50
+   ],
+   "decoded": "'s 's 'S",
+   "decoded_skip": "'s 's 'S"
+  },
+  {
+   "text": "...---...",
+   "ids": [
+    128000,
+    1131,
+    4521,
+    1131
+   ],
+   "ids_no_special": [
+    1131,
+    4521,
+    1131
+   ],
+   "decoded": "...---...",
+   "decoded_skip": "...---..."
+  },
+  {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "ids": [
+    128000,
+    45202,
+    45202,
+    45202,
+    45202,
+    45202,
+    45202,
+    4239
+   ],
+   "ids_no_special": [
+    45202,
+    45202,
+    45202,
+    45202,
+    45202,
+    45202,
+    4239
+   ],
+   "decoded": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "decoded_skip": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+ ],
+ "gpt2": [
+  {
+   "text": "Hello world",
+   "ids": [
+    15496,
+    995
+   ],
+   "ids_no_special": [
+    15496,
+    995
+   ],
+   "decoded": "Hello world",
+   "decoded_skip": "Hello world"
+  },
+  {
+   "text": "Hello, world!",
+   "ids": [
+    15496,
+    11,
+    995,
+    0
+   ],
+   "ids_no_special": [
+    15496,
+    11,
+    995,
+    0
+   ],
+   "decoded": "Hello, world!",
+   "decoded_skip": "Hello, world!"
+  },
+  {
+   "text": "I'LL do it, you'll see. Don't, can't, WE'RE",
+   "ids": [
+    40,
+    6,
+    3069,
+    466,
+    340,
+    11,
+    345,
+    1183,
+    766,
+    13,
+    2094,
+    470,
+    11,
+    460,
+    470,
+    11,
+    12887,
+    6,
+    2200
+   ],
+   "ids_no_special": [
+    40,
+    6,
+    3069,
+    466,
+    340,
+    11,
+    345,
+    1183,
+    766,
+    13,
+    2094,
+    470,
+    11,
+    460,
+    470,
+    11,
+    12887,
+    6,
+    2200
+   ],
+   "decoded": "I'LL do it, you'll see. Don't, can't, WE'RE",
+   "decoded_skip": "I'LL do it, you'll see. Don't, can't, WE'RE"
+  },
+  {
+   "text": "12345 678 9 1234567",
+   "ids": [
+    10163,
+    2231,
+    718,
+    3695,
+    860,
+    17031,
+    2231,
+    3134
+   ],
+   "ids_no_special": [
+    10163,
+    2231,
+    718,
+    3695,
+    860,
+    17031,
+    2231,
+    3134
+   ],
+   "decoded": "12345 678 9 1234567",
+   "decoded_skip": "12345 678 9 1234567"
+  },
+  {
+   "text": "$100.00!!! 3.14159",
+   "ids": [
+    3,
+    3064,
+    13,
+    405,
+    10185,
+    513,
+    13,
+    1415,
+    19707
+   ],
+   "ids_no_special": [
+    3,
+    3064,
+    13,
+    405,
+    10185,
+    513,
+    13,
+    1415,
+    19707
+   ],
+   "decoded": "$100.00!!! 3.14159",
+   "decoded_skip": "$100.00!!! 3.14159"
+  },
+  {
+   "text": "  multiple   spaces  ",
+   "ids": [
+    220,
+    3294,
+    220,
+    220,
+    9029,
+    220,
+    220
+   ],
+   "ids_no_special": [
+    220,
+    3294,
+    220,
+    220,
+    9029,
+    220,
+    220
+   ],
+   "decoded": "  multiple   spaces  ",
+   "decoded_skip": "  multiple   spaces  "
+  },
+  {
+   "text": " leading",
+   "ids": [
+    3756
+   ],
+   "ids_no_special": [
+    3756
+   ],
+   "decoded": " leading",
+   "decoded_skip": " leading"
+  },
+  {
+   "text": "trailing ",
+   "ids": [
+    9535,
+    4386,
+    220
+   ],
+   "ids_no_special": [
+    9535,
+    4386,
+    220
+   ],
+   "decoded": "trailing ",
+   "decoded_skip": "trailing "
+  },
+  {
+   "text": "line1\nline2\n\n\tindented\r\nwindows",
+   "ids": [
+    1370,
+    16,
+    198,
+    1370,
+    17,
+    628,
+    197,
+    521,
+    4714,
+    201,
+    198,
+    28457
+   ],
+   "ids_no_special": [
+    1370,
+    16,
+    198,
+    1370,
+    17,
+    628,
+    197,
+    521,
+    4714,
+    201,
+    198,
+    28457
+   ],
+   "decoded": "line1\nline2\n\n\tindented\r\nwindows",
+   "decoded_skip": "line1\nline2\n\n\tindented\r\nwindows"
+  },
+  {
+   "text": "emoji 🙂👍🏽 done",
+   "ids": [
+    368,
+    31370,
+    32485,
+    41840,
+    235,
+    8582,
+    237,
+    121,
+    1760
+   ],
+   "ids_no_special": [
+    368,
+    31370,
+    32485,
+    41840,
+    235,
+    8582,
+    237,
+    121,
+    1760
+   ],
+   "decoded": "emoji 🙂👍🏽 done",
+   "decoded_skip": "emoji 🙂👍🏽 done"
+  },
+  {
+   "text": "日本語のテキスト、そして中文。",
+   "ids": [
+    33768,
+    98,
+    17312,
+    105,
+    45739,
+    252,
+    5641,
+    24336,
+    25084,
+    43302,
+    23513,
+    2515,
+    251,
+    22180,
+    28134,
+    40792,
+    23877,
+    229,
+    16764
+   ],
+   "ids_no_special": [
+    33768,
+    98,
+    17312,
+    105,
+    45739,
+    252,
+    5641,
+    24336,
+    25084,
+    43302,
+    23513,
+    2515,
+    251,
+    22180,
+    28134,
+    40792,
+    23877,
+    229,
+    16764
+   ],
+   "decoded": "日本語のテキスト、そして中文。",
+   "decoded_skip": "日本語のテキスト、そして中文。"
+  },
+  {
+   "text": "naïve café résumé Ünïcödé",
+   "ids": [
+    2616,
+    38776,
+    40304,
+    40560,
+    16345,
+    2634,
+    49363,
+    77,
+    26884,
+    66,
+    9101,
+    67,
+    2634
+   ],
+   "ids_no_special": [
+    2616,
+    38776,
+    40304,
+    40560,
+    16345,
+    2634,
+    49363,
+    77,
+    26884,
+    66,
+    9101,
+    67,
+    2634
+   ],
+   "decoded": "naïve café résumé Ünïcödé",
+   "decoded_skip": "naïve café résumé Ünïcödé"
+  },
+  {
+   "text": "def f(x):\n    return x**2  # comment\n",
+   "ids": [
+    4299,
+    277,
+    7,
+    87,
+    2599,
+    198,
+    220,
+    220,
+    220,
+    1441,
+    2124,
+    1174,
+    17,
+    220,
+    1303,
+    2912,
+    198
+   ],
+   "ids_no_special": [
+    4299,
+    277,
+    7,
+    87,
+    2599,
+    198,
+    220,
+    220,
+    220,
+    1441,
+    2124,
+    1174,
+    17,
+    220,
+    1303,
+    2912,
+    198
+   ],
+   "decoded": "def f(x):\n    return x**2  # comment\n",
+   "decoded_skip": "def f(x):\n    return x**2  # comment\n"
+  },
+  {
+   "text": "http://example.com/a?b=c&d=e",
+   "ids": [
+    4023,
+    1378,
+    20688,
+    13,
+    785,
+    14,
+    64,
+    30,
+    65,
+    28,
+    66,
+    5,
+    67,
+    28,
+    68
+   ],
+   "ids_no_special": [
+    4023,
+    1378,
+    20688,
+    13,
+    785,
+    14,
+    64,
+    30,
+    65,
+    28,
+    66,
+    5,
+    67,
+    28,
+    68
+   ],
+   "decoded": "http://example.com/a?b=c&d=e",
+   "decoded_skip": "http://example.com/a?b=c&d=e"
+  },
+  {
+   "text": "a",
+   "ids": [
+    64
+   ],
+   "ids_no_special": [
+    64
+   ],
+   "decoded": "a",
+   "decoded_skip": "a"
+  },
+  {
+   "text": " ",
+   "ids": [
+    220
+   ],
+   "ids_no_special": [
+    220
+   ],
+   "decoded": " ",
+   "decoded_skip": " "
+  },
+  {
+   "text": "\n",
+   "ids": [
+    198
+   ],
+   "ids_no_special": [
+    198
+   ],
+   "decoded": "\n",
+   "decoded_skip": "\n"
+  },
+  {
+   "text": "\n\n\n",
+   "ids": [
+    628,
+    198
+   ],
+   "ids_no_special": [
+    628,
+    198
+   ],
+   "decoded": "\n\n\n",
+   "decoded_skip": "\n\n\n"
+  },
+  {
+   "text": "    ",
+   "ids": [
+    220,
+    220,
+    220,
+    220
+   ],
+   "ids_no_special": [
+    220,
+    220,
+    220,
+    220
+   ],
+   "decoded": "    ",
+   "decoded_skip": "    "
+  },
+  {
+   "text": "😀",
+   "ids": [
+    47249,
+    222
+   ],
+   "ids_no_special": [
+    47249,
+    222
+   ],
+   "decoded": "😀",
+   "decoded_skip": "😀"
+  },
+  {
+   "text": "ÀÁÂÃÄÅ",
+   "ids": [
+    127,
+    222,
+    127,
+    223,
+    5523,
+    5746,
+    127,
+    226,
+    127,
+    227
+   ],
+   "ids_no_special": [
+    127,
+    222,
+    127,
+    223,
+    5523,
+    5746,
+    127,
+    226,
+    127,
+    227
+   ],
+   "decoded": "ÀÁÂÃÄÅ",
+   "decoded_skip": "ÀÁÂÃÄÅ"
+  },
+  {
+   "text": "привет мир",
+   "ids": [
+    140,
+    123,
+    21169,
+    18849,
+    38857,
+    16843,
+    20375,
+    12466,
+    120,
+    18849,
+    21169
+   ],
+   "ids_no_special": [
+    140,
+    123,
+    21169,
+    18849,
+    38857,
+    16843,
+    20375,
+    12466,
+    120,
+    18849,
+    21169
+   ],
+   "decoded": "привет мир",
+   "decoded_skip": "привет мир"
+  },
+  {
+   "text": "<|begin_of_text|>Hi<|eot_id|>",
+   "ids": [
+    27,
+    91,
+    27471,
+    62,
+    1659,
+    62,
+    5239,
+    91,
+    29,
+    17250,
+    27,
+    91,
+    68,
+    313,
+    62,
+    312,
+    91,
+    29
+   ],
+   "ids_no_special": [
+    27,
+    91,
+    27471,
+    62,
+    1659,
+    62,
+    5239,
+    91,
+    29,
+    17250,
+    27,
+    91,
+    68,
+    313,
+    62,
+    312,
+    91,
+    29
+   ],
+   "decoded": "<|begin_of_text|>Hi<|eot_id|>",
+   "decoded_skip": "<|begin_of_text|>Hi<|eot_id|>"
+  },
+  {
+   "text": "x<|eot_id|>y",
+   "ids": [
+    87,
+    27,
+    91,
+    68,
+    313,
+    62,
+    312,
+    91,
+    29,
+    88
+   ],
+   "ids_no_special": [
+    87,
+    27,
+    91,
+    68,
+    313,
+    62,
+    312,
+    91,
+    29,
+    88
+   ],
+   "decoded": "x<|eot_id|>y",
+   "decoded_skip": "x<|eot_id|>y"
+  },
+  {
+   "text": "<|start_header_id|>user<|end_header_id|>\n\nWhat is 2+2?<|eot_id|>",
+   "ids": [
+    27,
+    91,
+    9688,
+    62,
+    25677,
+    62,
+    312,
+    91,
+    29,
+    7220,
+    27,
+    91,
+    437,
+    62,
+    25677,
+    62,
+    312,
+    91,
+    29,
+    198,
+    198,
+    2061,
+    318,
+    362,
+    10,
+    17,
+    30,
+    27,
+    91,
+    68,
+    313,
+    62,
+    312,
+    91,
+    29
+   ],
+   "ids_no_special": [
+    27,
+    91,
+    9688,
+    62,
+    25677,
+    62,
+    312,
+    91,
+    29,
+    7220,
+    27,
+    91,
+    437,
+    62,
+    25677,
+    62,
+    312,
+    91,
+    29,
+    198,
+    198,
+    2061,
+    318,
+    362,
+    10,
+    17,
+    30,
+    27,
+    91,
+    68,
+    313,
+    62,
+    312,
+    91,
+    29
+   ],
+   "decoded": "<|start_header_id|>user<|end_header_id|>\n\nWhat is 2+2?<|eot_id|>",
+   "decoded_skip": "<|start_header_id|>user<|end_header_id|>\n\nWhat is 2+2?<|eot_id|>"
+  },
+  {
+   "text": "<|endoftext|>after",
+   "ids": [
+    50256,
+    8499
+   ],
+   "ids_no_special": [
+    50256,
+    8499
+   ],
+   "decoded": "<|endoftext|>after",
+   "decoded_skip": "after"
+  },
+  {
+   "text": "before<|endoftext|>",
+   "ids": [
+    19052,
+    50256
+   ],
+   "ids_no_special": [
+    19052,
+    50256
+   ],
+   "decoded": "before<|endoftext|>",
+   "decoded_skip": "before"
+  },
+  {
+   "text": "tab\tseparated\tvalues",
+   "ids": [
+    8658,
+    197,
+    25512,
+    515,
+    197,
+    27160
+   ],
+   "ids_no_special": [
+    8658,
+    197,
+    25512,
+    515,
+    197,
+    27160
+   ],
+   "decoded": "tab\tseparated\tvalues",
+   "decoded_skip": "tab\tseparated\tvalues"
+  },
+  {
+   "text": "CamelCaseIdentifierWithNumbers123",
+   "ids": [
+    34,
+    17983,
+    20448,
+    33234,
+    7483,
+    3152,
+    49601,
+    10163
+   ],
+   "ids_no_special": [
+    34,
+    17983,
+    20448,
+    33234,
+    7483,
+    3152,
+    49601,
+    10163
+   ],
+   "decoded": "CamelCaseIdentifierWithNumbers123",
+   "decoded_skip": "CamelCaseIdentifierWithNumbers123"
+  },
+  {
+   "text": "'s 's 'S",
+   "ids": [
+    338,
+    705,
+    82,
+    705,
+    50
+   ],
+   "ids_no_special": [
+    338,
+    705,
+    82,
+    705,
+    50
+   ],
+   "decoded": "'s 's 'S",
+   "decoded_skip": "'s 's 'S"
+  },
+  {
+   "text": "...---...",
+   "ids": [
+    986,
+    6329,
+    986
+   ],
+   "ids_no_special": [
+    986,
+    6329,
+    986
+   ],
+   "decoded": "...---...",
+   "decoded_skip": "...---..."
+  },
+  {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "ids": [
+    24223,
+    24223,
+    24223,
+    24223,
+    24223,
+    24223,
+    5324
+   ],
+   "ids_no_special": [
+    24223,
+    24223,
+    24223,
+    24223,
+    24223,
+    24223,
+    5324
+   ],
+   "decoded": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "decoded_skip": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+ ]
+}

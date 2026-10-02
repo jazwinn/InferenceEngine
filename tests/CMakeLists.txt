@@ -33,3 +33,12 @@ target_link_libraries(generation_tests PRIVATE
     GTest::gtest_main
 )
 gtest_discover_tests(generation_tests)
+
+add_executable(tokenizer_tests tokenizer_test.cpp)
+target_link_libraries(tokenizer_tests PRIVATE
+    InferenceEngine::Models
+    GTest::gtest
+    GTest::gtest_main
+)
+target_compile_definitions(tokenizer_tests PRIVATE IE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+gtest_discover_tests(tokenizer_tests)
