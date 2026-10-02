@@ -42,3 +42,12 @@ target_link_libraries(tokenizer_tests PRIVATE
 )
 target_compile_definitions(tokenizer_tests PRIVATE IE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 gtest_discover_tests(tokenizer_tests)
+
+add_executable(models_tests weightloader_test.cpp gpt2_checkpoint_test.cpp)
+target_link_libraries(models_tests PRIVATE
+    InferenceEngine::Models
+    GTest::gtest
+    GTest::gtest_main
+)
+target_compile_definitions(models_tests PRIVATE IE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+gtest_discover_tests(models_tests)
