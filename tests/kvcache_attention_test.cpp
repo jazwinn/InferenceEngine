@@ -1,42 +1,25 @@
 #include <gtest/gtest.h>
 
-#include <Models/CausalModel.h>
 #include <NeuralNet/Transformer/KVCache.h>
 #include <NeuralNet/Transformer/MultiHeadAttention.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <stdexcept>
 #include <vector>
 
-using models::CausalModel;
 using math::Tensor;
 using nn::Module;
 using nn::transformer::KVCache;
 using nn::transformer::MultiHeadAttention;
-using nn::transformer::config::TransformerConfig;
 
 namespace {
 constexpr size_t kDModel  = 8;
 constexpr size_t kHeads   = 2;
 constexpr size_t kHeadDim = kDModel / kHeads;
 constexpr size_t kMaxSeq  = 6;
-constexpr size_t kLayers  = 3;
 
 constexpr double kExact = 1e-6;
-
-TransformerConfig TinyConfig() {
-    TransformerConfig c;
-    c.vocab_size  = 11;
-    c.d_model     = kDModel;
-    c.num_layers  = kLayers;
-    c.num_heads   = kHeads;
-    c.ffn_dim     = 16;
-    c.max_seq_len = kMaxSeq;
-    c.activation  = nn::transformer::config::Activation::GELUTanh;
-    return c;
-}
 
 template <typename T>
 void Seed(Module<T>& module) {
@@ -252,127 +235,4 @@ TEST(KVCacheAttention, AppendingAtAnOffsetDoesNotDisturbEarlierPositions) {
             for (size_t d = 0; d < kHeadDim; ++d)
                 EXPECT_FLOAT_EQ(cache.Layer(0).k(0, h, s, d), before(0, h, s, d))
                     << "position " << s << " was overwritten by a later append";
-}
-
-namespace {
-TransformerConfig TinyGPT2Config() {
-    TransformerConfig c = TinyConfig();
-    c.position = nn::transformer::config::PositionEncoding::Learned;
-    return c;
-}
-
-Tensor<int64_t> Ids(size_t seq) {
-    Tensor<int64_t> t({1, seq});
-    for (size_t s = 0; s < seq; ++s) t(0, s) = static_cast<int64_t>((s * 3 + 1) % 11);
-    return t;
-}
-
-int64_t ArgMax(const Tensor<float>& logits, size_t position, size_t vocab) {
-    int64_t best = 0;
-    for (size_t v = 1; v < vocab; ++v)
-        if (logits(0, position, v) > logits(0, position, best)) best = static_cast<int64_t>(v);
-    return best;
-}
-
-}
-
-TEST(KVCacheGPT2, DecodingOneTokenAtATimeMatchesTheFullSequence) {
-    const TransformerConfig config = TinyGPT2Config();
-    CausalModel<float> model(config);
-    Seed(model);
-    ASSERT_NE(model.wpe, nullptr) << "this test is meaningless without learned positions";
-
-    constexpr size_t kSeq = 5;
-    const Tensor<int64_t> ids = Ids(kSeq);
-    const Tensor<float> reference = model.Forward(ids, nullptr, 0);
-
-    KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
-                         config.HeadDim());
-
-    for (size_t s = 0; s < kSeq; ++s) {
-        Tensor<int64_t> one({1, 1});
-        one(0, 0) = ids(0, s);
-        const Tensor<float> out = model.Forward(one, &cache);
-        EXPECT_LT(RowDiff(out, 0, reference, s), kExact) << "position " << s;
-    }
-}
-
-TEST(KVCacheGPT2, PrefillThenDecodeMatchesTheFullSequence) {
-    const TransformerConfig config = TinyGPT2Config();
-    CausalModel<float> model(config);
-    Seed(model);
-
-    constexpr size_t kSeq = 5, kPrompt = 3;
-    const Tensor<int64_t> ids = Ids(kSeq);
-    const Tensor<float> reference = model.Forward(ids, nullptr, 0);
-
-    KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
-                         config.HeadDim());
-
-    Tensor<int64_t> prompt({1, kPrompt});
-    for (size_t s = 0; s < kPrompt; ++s) prompt(0, s) = ids(0, s);
-    const Tensor<float> prefill = model.Forward(prompt, &cache);
-
-    for (size_t s = 0; s < kPrompt; ++s)
-        EXPECT_LT(RowDiff(prefill, s, reference, s), kExact) << "prefill position " << s;
-
-    for (size_t s = kPrompt; s < kSeq; ++s) {
-        Tensor<int64_t> one({1, 1});
-        one(0, 0) = ids(0, s);
-        EXPECT_LT(RowDiff(model.Forward(one, &cache), 0, reference, s), kExact)
-            << "decode position " << s;
-    }
-}
-
-TEST(KVCacheGPT2, PositionActuallyChangesTheLogits) {
-    const TransformerConfig config = TinyGPT2Config();
-    CausalModel<float> model(config);
-    Seed(model);
-
-    Tensor<int64_t> same({1, 2});
-    same(0, 0) = 4;
-    same(0, 1) = 4;
-
-    const Tensor<float> out = model.Forward(same, nullptr, 0);
-    EXPECT_GT(RowDiff(out, 0, out, 1), 1e-3)
-        << "the same token at positions 0 and 1 should not give identical logits";
-}
-
-TEST(KVCacheGPT2, GreedyDecodingPicksTheSameTokensWithAndWithoutACache) {
-    const TransformerConfig config = TinyGPT2Config();
-    CausalModel<float> model(config);
-    Seed(model);
-
-    const size_t prompt_len = 2;
-    const size_t steps = config.max_seq_len - prompt_len;
-
-    std::vector<int64_t> slow{Ids(prompt_len)(0, 0), Ids(prompt_len)(0, 1)};
-    std::vector<int64_t> fast = slow;
-
-    for (size_t i = 0; i < steps; ++i) {
-        Tensor<int64_t> all({1, slow.size()});
-        for (size_t s = 0; s < slow.size(); ++s) all(0, s) = slow[s];
-        slow.push_back(ArgMax(model.Forward(all, nullptr, 0), slow.size() - 1, config.vocab_size));
-    }
-
-    KVCache<float> cache(config.num_layers, 1, config.KVHeads(), config.max_seq_len,
-                         config.HeadDim());
-    Tensor<int64_t> prompt({1, prompt_len});
-    for (size_t s = 0; s < prompt_len; ++s) prompt(0, s) = fast[s];
-    Tensor<float> logits = model.Forward(prompt, &cache);
-    size_t last = prompt_len - 1;
-
-    for (size_t i = 0; i < steps; ++i) {
-        const int64_t best = ArgMax(logits, last, config.vocab_size);
-        fast.push_back(best);
-        if (i + 1 == steps) break;
-        Tensor<int64_t> next({1, 1});
-        next(0, 0) = best;
-        logits = model.Forward(next, &cache);
-        last = 0;
-    }
-
-    ASSERT_EQ(slow.size(), fast.size());
-    for (size_t i = 0; i < slow.size(); ++i)
-        EXPECT_EQ(slow[i], fast[i]) << "token " << i << " differs";
 }

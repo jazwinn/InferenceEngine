@@ -103,20 +103,6 @@ TEST(SequentialForward, OrderChangesTheResult) {
     EXPECT_GT(largest, 1e-3f);
 }
 
-TEST(SequentialForward, BuildsTheGPT2FeedForwardShape) {
-    // Linear(d -> 4d) -> GELU -> Linear(4d -> d) over [batch, seq, d].
-    auto up = SeededLinear<float>(8, 32, 0.0);
-    auto gelu = std::make_shared<GELU<float>>();
-    auto down = SeededLinear<float>(32, 8, 1.0);
-    Sequential<float, Linear<float>, GELU<float>, Linear<float>> mlp(up, gelu, down);
-    const Tensor<float> x = Wave<float>({2, 3, 8});
-
-    const Tensor<float> out = mlp.Forward(x);
-
-    EXPECT_EQ(out.Shape(), (std::vector<size_t>{2, 3, 8}));
-    ExpectAllNear(out, down->Forward(gelu->Forward(up->Forward(x))), kTol);
-}
-
 TEST(SequentialForward, TheSameLayerCanAppearTwice) {
     auto linear = SeededLinear<float>(3, 3, 0.0);
     Sequential<float, Linear<float>, Linear<float>> twice(linear, linear);

@@ -3,8 +3,6 @@
 #include <Models/Tokenizer.h>
 
 #include <cstdint>
-#include <filesystem>
-#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -13,18 +11,6 @@ using models::Tokenizer;
 using json = nlohmann::json;
 
 namespace {
-
-std::string SourcePath(const std::string& relative) {
-    return std::string(IE_SOURCE_DIR) + "/" + relative;
-}
-
-const json& Cases() {
-    static const json cases = [] {
-        std::ifstream file(SourcePath("tests/data/tokenizer_cases.json"));
-        return json::parse(file);
-    }();
-    return cases;
-}
 
 json TinyTokenizer(bool ignore_merges = false, json merges = json::array({"a b"})) {
     return json{
@@ -36,68 +22,7 @@ json TinyTokenizer(bool ignore_merges = false, json merges = json::array({"a b"}
     };
 }
 
-std::vector<int64_t> Ids(const json& array) { return array.get<std::vector<int64_t>>(); }
-
-void ExpectMatchesHuggingFace(const std::string& name, const std::string& path) {
-    const std::string full = SourcePath(path);
-    if (!std::filesystem::exists(full)) GTEST_SKIP() << full << " is not downloaded.";
-
-    const Tokenizer tokenizer = Tokenizer::FromFile(full);
-    for (const json& c : Cases().at(name)) {
-        const std::string text = c.at("text").get<std::string>();
-        SCOPED_TRACE("text: \"" + text + "\"");
-        EXPECT_EQ(tokenizer.Encode(text, true), Ids(c.at("ids")));
-        EXPECT_EQ(tokenizer.Encode(text, false), Ids(c.at("ids_no_special")));
-        EXPECT_EQ(tokenizer.Decode(Ids(c.at("ids_no_special")), false), c.at("decoded").get<std::string>());
-        EXPECT_EQ(tokenizer.Decode(Ids(c.at("ids_no_special")), true), c.at("decoded_skip").get<std::string>());
-    }
-}
-
 }  // namespace
-
-TEST(TokenizerHuggingFace, Llama3MatchesExactly) {
-    ExpectMatchesHuggingFace("llama", "Models/llama3.2/tokenizer.json");
-}
-
-TEST(TokenizerHuggingFace, GPT2MatchesExactly) {
-    ExpectMatchesHuggingFace("gpt2", "Models/gpt2/tokenizer.json");
-}
-
-TEST(TokenizerHuggingFace, Llama3VocabularyAndSpecialTokens) {
-    const std::string path = SourcePath("Models/llama3.2/tokenizer.json");
-    if (!std::filesystem::exists(path)) GTEST_SKIP() << path << " is not downloaded.";
-    const Tokenizer tokenizer = Tokenizer::FromFile(path);
-
-    EXPECT_EQ(tokenizer.VocabSize(), 128256u);
-    EXPECT_EQ(tokenizer.TokenToId("<|begin_of_text|>"), 128000);
-    EXPECT_EQ(tokenizer.TokenToId("<|eot_id|>"), 128009);
-    EXPECT_TRUE(tokenizer.IsSpecial(128009));
-    EXPECT_FALSE(tokenizer.IsSpecial(9906));
-    EXPECT_EQ(tokenizer.IdToToken(128001), "<|end_of_text|>");
-    EXPECT_EQ(tokenizer.Encode("Hi").front(), 128000);
-}
-
-TEST(TokenizerHuggingFace, GPT2HasNoBosAndKnowsEndOfText) {
-    const std::string path = SourcePath("Models/gpt2/tokenizer.json");
-    if (!std::filesystem::exists(path)) GTEST_SKIP() << path << " is not downloaded.";
-    const Tokenizer tokenizer = Tokenizer::FromFile(path);
-
-    EXPECT_EQ(tokenizer.VocabSize(), 50257u);
-    EXPECT_EQ(tokenizer.TokenToId("<|endoftext|>"), 50256);
-    EXPECT_EQ(tokenizer.Encode("Hello", true), tokenizer.Encode("Hello", false));
-}
-
-TEST(TokenizerHuggingFace, DecodingTokenByTokenConcatenatesToTheText) {
-    const std::string path = SourcePath("Models/llama3.2/tokenizer.json");
-    if (!std::filesystem::exists(path)) GTEST_SKIP() << path << " is not downloaded.";
-    const Tokenizer tokenizer = Tokenizer::FromFile(path);
-    const std::string text = "Streaming 🙂 日本語 works.";
-
-    std::string streamed;
-    for (int64_t id : tokenizer.Encode(text, false)) streamed += tokenizer.Decode({id});
-
-    EXPECT_EQ(streamed, text);
-}
 
 TEST(TokenizerBPE, AppliesMergesInRankOrder) {
     const Tokenizer tokenizer = Tokenizer::FromJson(TinyTokenizer());

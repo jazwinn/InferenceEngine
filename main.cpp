@@ -1,73 +1,87 @@
 #include "Models/CausalModel.h"
+#include "Models/ChatTemplate.h"
 #include "Models/ModelConfigs.h"
 #include "Models/Tokenizer.h"
-#include "Models/gpt2/Checkpoint.h"
 #include "Models/WeightLoader.h"
 #include "Generation/Sampler.h"
 
+#include <algorithm>
 #include <exception>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
-using models::CausalModel;
-using nn::transformer::config::TransformerConfig;
-using nn::transformer::KVCache;
 using generation::Greedy;
-using models::Tokenizer;
-using models::gpt2::ReadCheckpoint;
+using models::CausalModel;
+using models::ChatTemplate;
 using models::LoadWeights;
+using models::Message;
+using models::Tokenizer;
+using nn::transformer::KVCache;
 
 int main() {
   try {
-    const Tokenizer tokenizer = Tokenizer::FromFile("Models/gpt2/tokenizer.json");
+    const std::string modelDir = "Models/llama3.2-instruct/";
 
-    CausalModel<float> GPT2Model(models::gpt2::Small());
-    KVCache<float> cache(GPT2Model.config.num_layers, 1, GPT2Model.config.KVHeads(),
-                         GPT2Model.config.max_seq_len, GPT2Model.config.HeadDim());
-    LoadWeights<float>(GPT2Model, ReadCheckpoint<float>("Models/gpt2/model.safetensors"));
-                    
+    const Tokenizer tokenizer = Tokenizer::FromFile(modelDir + "tokenizer.json");
+    const ChatTemplate chat = ChatTemplate::FromFile(modelDir + "tokenizer_config.json");
+    std::vector<Message> history = {{"system", "You are a helpful assistant."}};
+
+    CausalModel<float> model(models::llama::Llama32_1B());
+    const size_t contextSize = std::min<size_t>(2048, model.config.max_seq_len);
+    KVCache<float> cache(model.config.num_layers, 1, model.config.KVHeads(), contextSize, model.config.HeadDim());
+    LoadWeights<float>(model, modelDir + "model.safetensors", models::llama::Rules());
+
+    Greedy<float> greedy;
 
     while (true) {
       std::string input;
       std::cout << "Insert Prompt: ";
       if (!std::getline(std::cin, input)) break;
+      if (input.empty()) continue;
 
-      std::vector<int64_t> ids = tokenizer.Encode(input);
-      if (ids.empty()) continue;
-      if (ids.size() >= GPT2Model.config.max_seq_len) {
+      history.push_back({"user", input});
+      std::vector<int64_t> ids = tokenizer.Encode(chat.Apply(history), false);
+      while (ids.size() >= contextSize && history.size() > 2) {
+        history.erase(history.begin() + 1, history.begin() + 3);
+        ids = tokenizer.Encode(chat.Apply(history), false);
+      }
+      if (ids.size() >= contextSize) {
+        history.pop_back();
         std::cout << "prompt is too long for the context window\n";
         continue;
       }
 
       cache.Reset();
 
-      Greedy<float> greedy;
-
       math::Tensor<int64_t> prompt({1, ids.size()});
       for (size_t i = 0; i < ids.size(); ++i) prompt(0, i) = ids[i];
 
-      math::Tensor<float> logits = GPT2Model.Forward(prompt, &cache);
+      math::Tensor<float> logits = model.Forward(prompt, &cache);
       size_t last = ids.size() - 1;
 
-      while (ids.size() < GPT2Model.config.max_seq_len) {
-          const int64_t best = static_cast<int64_t>(greedy.Pick(logits.Row(0).Row(last)));
+      std::string answer;
+      while (ids.size() < contextSize) {
+        const int64_t best = static_cast<int64_t>(greedy.Pick(logits.Row(0).Row(last)));
+        if (model.config.IsEos(best)) break;
+        ids.push_back(best);
 
-          if (GPT2Model.config.IsEos(best)) break;
-          ids.push_back(best);
-          std::cout << tokenizer.Decode({best}) << std::flush;
+        const std::string piece = tokenizer.Decode({best});
+        std::cout << piece << std::flush;
+        answer += piece;
 
-          if (ids.size() >= GPT2Model.config.max_seq_len) break;
+        if (ids.size() >= contextSize) break;
 
-          math::Tensor<int64_t> next({1, 1});
-          next(0, 0) = best;
-          logits = GPT2Model.Forward(next, &cache);
-          last   = 0;
+        math::Tensor<int64_t> next({1, 1});
+        next(0, 0) = best;
+        logits = model.Forward(next, &cache);
+        last = 0;
       }
 
       std::cout << "\n";
+      history.push_back({"assistant", std::move(answer)});
     }
-
   } catch (const std::exception& error) {
     std::cerr << "\nerror: " << error.what() << "\n";
     return 1;

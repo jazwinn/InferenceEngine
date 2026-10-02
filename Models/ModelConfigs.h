@@ -1,5 +1,8 @@
 #pragma once
 
+#include <vector>
+
+#include "Models/WeightLoader.h"
 #include "NeuralNet/Transformer/TransformerConfig.h"
 
 namespace models::gpt2 {
@@ -46,5 +49,23 @@ namespace models::llama {
         c.bos_token_id = 128000;
         c.eos_token_ids = {128001, 128008, 128009};
         return c;
+    }
+
+    inline const std::vector<RenameRule> &Rules()
+    {
+        static const std::vector<RenameRule> rules = {
+            {"model.embed_tokens.weight", "wte.weight"},
+            {"model.norm.weight", "transformer.finalNorm.weight"},
+            {"model.layers.{i}.input_layernorm.weight", "transformer.h.{i}.attenNorm.weight"},
+            {"model.layers.{i}.post_attention_layernorm.weight", "transformer.h.{i}.mlpNorm.weight"},
+            {"model.layers.{i}.self_attn.q_proj.weight", "transformer.h.{i}.attention.query.weight"},
+            {"model.layers.{i}.self_attn.k_proj.weight", "transformer.h.{i}.attention.key.weight"},
+            {"model.layers.{i}.self_attn.v_proj.weight", "transformer.h.{i}.attention.value.weight"},
+            {"model.layers.{i}.self_attn.o_proj.weight", "transformer.h.{i}.attention.output_proj.weight"},
+            {"model.layers.{i}.mlp.gate_proj.weight", "transformer.h.{i}.mlp.gate.weight"},
+            {"model.layers.{i}.mlp.up_proj.weight", "transformer.h.{i}.mlp.up.weight"},
+            {"model.layers.{i}.mlp.down_proj.weight", "transformer.h.{i}.mlp.down.weight"},
+        };
+        return rules;
     }
 }
