@@ -50,3 +50,11 @@ target_link_libraries(models_tests PRIVATE
 )
 target_compile_definitions(models_tests PRIVATE IE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 gtest_discover_tests(models_tests)
+
+add_executable(cuda_tests CUDA/devicebuffer_test.cpp CUDA/matmul_test.cpp)
+target_link_libraries(cuda_tests PRIVATE
+    InferenceEngine::CUDA
+    GTest::gtest
+    GTest::gtest_main
+)
+gtest_discover_tests(cuda_tests)

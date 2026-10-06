@@ -1,9 +1,9 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.24)
 
 # Must run before project(): the toolchain governs dependency resolution.
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/vcpkg.cmake)
 
-project(InferenceEngine LANGUAGES CXX)
+project(InferenceEngine LANGUAGES CXX CUDA)
 
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type for single-config generators" FORCE)
@@ -14,14 +14,18 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
 if(MSVC)
-    add_compile_options(/W4 /permissive- /utf-8)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/W4> $<$<COMPILE_LANGUAGE:CXX>:/permissive-> $<$<COMPILE_LANGUAGE:CXX>:/utf-8>)
 else()
-    add_compile_options(-Wall -Wextra)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall> $<$<COMPILE_LANGUAGE:CXX>:-Wextra>)
 endif()
 
 add_subdirectory(Generation)
 add_subdirectory(Math)
+add_subdirectory(CUDA)
 add_subdirectory(NeuralNet)
 add_subdirectory(Reflection)
 add_subdirectory(Serialize)
