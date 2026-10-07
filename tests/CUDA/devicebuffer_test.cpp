@@ -3,6 +3,7 @@
 #include <CUDA/DeviceBuffer.h>
 
 #include <numeric>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -165,4 +166,46 @@ TEST(DeviceBufferResize, ResizedBufferIsUsable) {
     auto host = Iota(5);
     buf.CopyFromHost(host.data(), host.size());
     EXPECT_EQ(Download(buf), host);
+}
+
+TEST(DeviceBufferCopy, CopyToDeviceCopiesBetweenBuffers) {
+    auto data = Iota(6);
+    DeviceBuffer<float> src(data.data(), data.size());
+    DeviceBuffer<float> dst(6);
+    src.CopyToDevice(dst.Data(), 6);
+    EXPECT_EQ(Download(dst), data);
+}
+
+TEST(DeviceBufferCopy, CopyToDeviceThrowsWhenCountTooLarge) {
+    DeviceBuffer<float> src(4);
+    DeviceBuffer<float> dst(8);
+    EXPECT_THROW(src.CopyToDevice(dst.Data(), 5), std::invalid_argument);
+}
+
+TEST(DeviceBufferMemset, ZeroFillsWholeBuffer) {
+    auto data = Iota(5);
+    DeviceBuffer<float> buf(data.data(), data.size());
+    buf.Memset(0, buf.Size());
+    EXPECT_EQ(Download(buf), std::vector<float>(5, 0.0f));
+}
+
+TEST(DeviceBufferMemset, PartialCountLeavesTailUntouched) {
+    auto data = Iota(5);
+    DeviceBuffer<double> buf(5);
+    std::vector<double> init(data.begin(), data.end());
+    buf.CopyFromHost(init.data(), init.size());
+    buf.Memset(0, 2);
+    std::vector<double> out(5);
+    buf.CopyToHost(out.data(), out.size());
+    EXPECT_EQ(out, (std::vector<double>{0, 0, 3, 4, 5}));
+}
+
+TEST(DeviceBufferMemset, ThrowsWhenCountTooLarge) {
+    DeviceBuffer<float> buf(3);
+    EXPECT_THROW(buf.Memset(0, 4), std::invalid_argument);
+}
+
+TEST(DeviceBufferMemset, ZeroCountOnEmptyBufferIsNoOp) {
+    DeviceBuffer<float> buf;
+    EXPECT_NO_THROW(buf.Memset(0, 0));
 }

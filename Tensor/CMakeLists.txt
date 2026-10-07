@@ -12,3 +12,8 @@ target_sources(tensor INTERFACE
     BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/..
     FILES Tensor.h
 )
+
+if(IE_ENABLE_CUDA)
+    target_link_libraries(tensor INTERFACE InferenceEngine::CUDA)
+    target_compile_definitions(tensor INTERFACE IE_ENABLE_CUDA)
+endif()

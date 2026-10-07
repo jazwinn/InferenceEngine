@@ -8,6 +8,8 @@
 
 using cuda::DeviceBuffer;
 using cuda::LaunchMatMul;
+using cuda::LaunchMatMulDevice;
+using cuda::LaunchMatMulHost;
 
 namespace {
 
@@ -41,7 +43,7 @@ void ExpectNear(const std::vector<T>& actual, const std::vector<T>& expected, T 
 template <typename T>
 std::vector<T> HostMatMul(const std::vector<T>& A, const std::vector<T>& B, size_t M, size_t N, size_t K) {
     std::vector<T> C(M * K, T(-999));
-    LaunchMatMul(A.data(), B.data(), C.data(), M, N, K);
+    LaunchMatMulHost(A.data(), B.data(), C.data(), M, N, K);
     return C;
 }
 
@@ -192,4 +194,19 @@ TEST(MatMulDevice, ThrowDoesNotTouchOutput) {
     std::vector<float> out(4);
     dC.CopyToHost(out.data(), out.size());
     EXPECT_EQ(out, sentinel);
+}
+
+TEST(MatMulDevice, RawPointerLauncherMatchesHost) {
+    const size_t M = 21, N = 9, K = 30;
+    auto A = Pattern<float>(M * N, 7);
+    auto B = Pattern<float>(N * K, 8);
+
+    DeviceBuffer<float> dA(A.data(), A.size());
+    DeviceBuffer<float> dB(B.data(), B.size());
+    DeviceBuffer<float> dC(M * K);
+    LaunchMatMulDevice(dA.Data(), dB.Data(), dC.Data(), M, N, K);
+
+    std::vector<float> C(M * K);
+    dC.CopyToHost(C.data(), C.size());
+    EXPECT_EQ(C, HostMatMul(A, B, M, N, K));
 }

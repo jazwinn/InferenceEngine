@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cassert>
 #include <cstddef>
+#include <stdexcept>
 #include <utility>
 
 namespace cuda{
@@ -10,6 +10,8 @@ namespace cuda{
     void DeviceFree(void* ptr);
     void CopyHostToDevice(void* dst, const void* src, size_t bytes);
     void CopyDeviceToHost(void* dst, const void* src, size_t bytes);
+    void CopyDeviceToDevice(void* dst, const void* src, size_t bytes);
+    void DeviceMemset(void* ptr, int val, size_t bytes);
 
     template <typename T>
     class DeviceBuffer
@@ -53,13 +55,33 @@ namespace cuda{
         }
 
         void CopyFromHost(const T* src, size_t count){
-            assert(count <= m_count);
+            if(count > m_count){
+                throw std::invalid_argument("CopyFromHost: count exceeds buffer size");
+            }
             CopyHostToDevice(m_buffer, src, count * sizeof(T));
         }
 
         void CopyToHost(T* dst, size_t count) const{
-            assert(count <= m_count);
+            if(count > m_count){
+                throw std::invalid_argument("CopyToHost: count exceeds buffer size");
+            }
             CopyDeviceToHost(dst, m_buffer, count * sizeof(T));
+        }
+
+        void CopyToDevice(T* dst, size_t count) const{
+            if(count > m_count){
+                throw std::invalid_argument("CopyToDevice: count exceeds buffer size");
+            }
+            CopyDeviceToDevice(dst, m_buffer, count * sizeof(T));
+        }
+
+        void Memset(int val, size_t count){
+            if(count > m_count){
+                throw std::invalid_argument("Memset: count exceeds buffer size");
+            }
+            if(count > 0){
+                DeviceMemset(m_buffer, val, count * sizeof(T));
+            }
         }
 
         T* Data(){return m_buffer;}

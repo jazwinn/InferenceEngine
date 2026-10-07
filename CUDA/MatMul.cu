@@ -5,7 +5,8 @@
 #include "CUDA/detail/common.cuh"
 
 #define INSTANTIATE_MATMUL(T) \
-    template void LaunchMatMul<T>(const T*, const T*, T*, size_t, size_t, size_t); \
+    template void LaunchMatMulDevice<T>(const T*, const T*, T*, size_t, size_t, size_t); \
+    template void LaunchMatMulHost<T>(const T*, const T*, T*, size_t, size_t, size_t); \
     template void LaunchMatMul<T>(const DeviceBuffer<T>&, const DeviceBuffer<T>&, DeviceBuffer<T>&, size_t, size_t, size_t);
 
 
@@ -29,31 +30,27 @@ namespace cuda{
     }
 
     template <typename T>
-    void LaunchMatMul(const DeviceBuffer<T>& dA, const DeviceBuffer<T>& dB, DeviceBuffer<T>& dC, size_t M, size_t N, size_t K){
-        if (dA.Size() < M * N || dB.Size() < N * K || dC.Size() < M * K)
-            throw std::invalid_argument("LaunchMatMul: buffer too small for given M, N, K");
-
+    void LaunchMatMulDevice(const T* dA, const T* dB, T* dC, size_t M, size_t N, size_t K){
         dim3 block(16, 16);
         dim3 grid(CeilDiv(K, block.x), CeilDiv(M, block.y));
 
-        MatMulKernel<<<grid, block>>>(dA.Data(), dB.Data(), dC.Data(), M, N, K);
+        MatMulKernel<<<grid, block>>>(dA, dB, dC, M, N, K);
         CUDA_CHECK(cudaGetLastError());
     }
 
     template <typename T>
-    void LaunchMatMul(const T* A, const T* B, T* C, size_t M, size_t N, size_t K){
-        size_t countA = M * N;
-        size_t countB = N * K;
-        size_t countC = M * K;
+    void LaunchMatMul(const DeviceBuffer<T>& dA, const DeviceBuffer<T>& dB, DeviceBuffer<T>& dC, size_t M, size_t N, size_t K){
+        if (dA.Size() < M * N || dB.Size() < N * K || dC.Size() < M * K)
+            throw std::invalid_argument("LaunchMatMul: buffer too small for given M, N, K");
 
-        DeviceBuffer<T> dA(A, countA);
-        DeviceBuffer<T> dB(B, countB);
-        DeviceBuffer<T> dC(countC);
+        LaunchMatMulDevice(dA.Data(), dB.Data(), dC.Data(), M, N, K);
+    }
 
-        LaunchMatMul(dA, dB, dC, M, N, K);
-
-        dC.CopyToHost(C, countC);
-
+    template <typename T>
+    void LaunchMatMulHost(const T* A, const T* B, T* C, size_t M, size_t N, size_t K){
+        DeviceBuffer<T> dA(A, M * N), dB(B, N * K), dC(M * K);
+        LaunchMatMulDevice(dA.Data(), dB.Data(), dC.Data(), M, N, K);
+        dC.CopyToHost(C, M * K);
     }
 
 

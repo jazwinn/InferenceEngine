@@ -13,12 +13,20 @@ namespace cuda{
         cudaFree(ptr);
     }
 
+    void DeviceMemset(void* ptr, int val, size_t bytes){
+        CUDA_CHECK(cudaMemset(ptr, val, bytes));
+    }
+
     void CopyHostToDevice(void* dst, const void* src, size_t bytes){
         CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyHostToDevice));
     }
 
     void CopyDeviceToHost(void* dst, const void* src, size_t bytes){
         CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToHost));
+    }
+
+    void CopyDeviceToDevice(void* dst, const void* src, size_t bytes){
+        CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToDevice));
     }
 
 }
