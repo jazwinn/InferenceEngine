@@ -485,3 +485,29 @@ TEST(LinearElementType, WorksWithDouble) {
 
     EXPECT_DOUBLE_EQ(out(0, 0), 2.0);
 }
+
+// --- Module::To -------------------------------------------------------------
+
+TEST(ModuleTo, CPUToCPUKeepsStorage) {
+    TwoLayer<float> m(4, 3, 2);
+    const Tensor<float> before = *m.first->weight;
+
+    m.To(tensor::Device::CPU);
+
+    EXPECT_TRUE(m.first->weight->SharesStorage(before));
+    for (const auto& [name, param] : m.NamedParameters()) {
+        EXPECT_FALSE(param->IsCUDA()) << name;
+    }
+}
+
+TEST(ModuleTo, ModuleWithoutParametersIsANoOp) {
+    Passthrough<float> m;
+    EXPECT_NO_THROW(m.To(tensor::Device::CPU));
+}
+
+#ifndef IE_ENABLE_CUDA
+TEST(ModuleTo, CUDAThrowsWithoutCUDA) {
+    Linear<float> layer(2, 2);
+    EXPECT_THROW(layer.To(tensor::Device::CUDA), std::logic_error);
+}
+#endif

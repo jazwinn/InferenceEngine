@@ -11,6 +11,7 @@
 namespace nn{
 
     using tensor::Tensor;
+    using tensor::Device;
 
     template <typename T>
     class Module{
@@ -22,6 +23,19 @@ namespace nn{
         };
 
         virtual ~Module() = default;
+
+        void To(Device device){
+            for (const auto& [name, param] : m_parameters) {
+                if(param){
+                    *param = param->To(device);
+                }
+            }
+            for (const auto& [name, submodule] : m_submodules) {
+                if(submodule){
+                    submodule->To(device);
+                }
+            }
+        }
 
         void RegisterParameter(const std::string& name, std::shared_ptr<Tensor<T>> parameter){
             Register(m_parameters, name, std::move(parameter));

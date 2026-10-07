@@ -2500,3 +2500,61 @@ TEST(TensorSqueeze, RejectsRemovingTheOnlyAxis) {
 TEST(TensorSqueeze, RejectsEmptyTensor) {
     EXPECT_THROW(Tensor<float>().Squeeze(0), std::invalid_argument);
 }
+
+// --- device -----------------------------------------------------------------
+
+using tensor::Device;
+
+TEST(TensorDevice, DefaultConstructedIsCPU) {
+    Tensor<float> t;
+    EXPECT_EQ(t.GetDevice(), Device::CPU);
+    EXPECT_FALSE(t.IsCUDA());
+}
+
+TEST(TensorDevice, ShapeConstructorsAreCPU) {
+    EXPECT_EQ(Tensor<float>({2, 3}).GetDevice(), Device::CPU);
+    EXPECT_EQ(Tensor<float>({2, 3}, 1.5f).GetDevice(), Device::CPU);
+    EXPECT_EQ(Tensor<float>({2, 3}, Device::CPU).GetDevice(), Device::CPU);
+}
+
+TEST(TensorDevice, DeviceConstructorZeroFillsOnCPU) {
+    Tensor<float> t({2, 2}, Device::CPU);
+    for (size_t i = 0; i < 2; ++i)
+        for (size_t j = 0; j < 2; ++j) EXPECT_FLOAT_EQ(t(i, j), 0.0f);
+}
+
+TEST(TensorDevice, ViewsStayOnCPU) {
+    Tensor<float> t({2, 3, 4});
+    EXPECT_EQ(t.Reshape(6, 4).GetDevice(), Device::CPU);
+    EXPECT_EQ(t.View(4, 6).GetDevice(), Device::CPU);
+    EXPECT_EQ(t.Row(1).GetDevice(), Device::CPU);
+    EXPECT_EQ(t.Permute(2, 0, 1).GetDevice(), Device::CPU);
+    EXPECT_EQ(t.Transpose(0, 2).GetDevice(), Device::CPU);
+    EXPECT_EQ(t.Slice(1, 0, 2).GetDevice(), Device::CPU);
+    EXPECT_EQ(t.Unsqueeze(0).GetDevice(), Device::CPU);
+    EXPECT_EQ(t.Unsqueeze(0).Squeeze(0).GetDevice(), Device::CPU);
+    EXPECT_EQ(t.Transpose(0, 2).Reshape(24).GetDevice(), Device::CPU);
+}
+
+TEST(TensorDevice, ToSameDeviceSharesStorage) {
+    Tensor<float> t({2, 3}, 1.0f);
+    EXPECT_TRUE(t.To(Device::CPU).SharesStorage(t));
+}
+
+TEST(TensorDevice, ToOnEmptyTensorReturnsEmpty) {
+    EXPECT_EQ(Tensor<float>().To(Device::CUDA).Size(), 0u);
+}
+
+TEST(TensorDevice, RequireCPUPassesOnCPUTensor) {
+    EXPECT_NO_THROW(Tensor<float>({1}).RequireCPU("test"));
+}
+
+#ifndef IE_ENABLE_CUDA
+TEST(TensorDevice, ToCUDAThrowsWithoutCUDA) {
+    EXPECT_THROW(Tensor<float>({2, 3}).To(Device::CUDA), std::logic_error);
+}
+
+TEST(TensorDevice, ConstructOnCUDAThrowsWithoutCUDA) {
+    EXPECT_THROW(Tensor<float>({2, 3}, Device::CUDA), std::logic_error);
+}
+#endif
