@@ -5,7 +5,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 add_library(serialize INTERFACE)
 add_library(InferenceEngine::Serialize ALIAS serialize)
 
-target_link_libraries(serialize INTERFACE InferenceEngine::Math InferenceEngine::Reflection nlohmann_json::nlohmann_json)
+target_link_libraries(serialize INTERFACE InferenceEngine::Tensor InferenceEngine::Reflection nlohmann_json::nlohmann_json)
 
 target_include_directories(serialize INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>

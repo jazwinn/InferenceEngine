@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 using nn::transformer::config::NormType;
 using nn::transformer::config::TransformerConfig;
 using nn::transformer::norm::LayerNorm;

@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "NeuralNet/Module.h"
 #include "NeuralNet/Linear.h"
 #include "NeuralNet/Embedding.h"
@@ -16,7 +16,7 @@
 
 namespace models{
 
-    using math::Tensor;
+    using tensor::Tensor;
     using nn::Module;
     using nn::Linear;
     using nn::Embedding;
@@ -72,7 +72,7 @@ namespace models{
             if(lm_head != nullptr){
                 return lm_head->Forward(h);
             }
-            return math::MatMul(h, wte->weight->Transpose());
+            return tensor::MatMul(h, wte->weight->Transpose());
         }
 
         TransformerConfig config;

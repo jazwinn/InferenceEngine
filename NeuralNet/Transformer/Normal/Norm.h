@@ -1,12 +1,12 @@
 #pragma once
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "NeuralNet/Module.h"
 
 namespace nn::transformer::norm
 {
     using nn::Module;
-    using math::Tensor;
+    using tensor::Tensor;
 
     template <typename T>
     class Norm: public Module<T>

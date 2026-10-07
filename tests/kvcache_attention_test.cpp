@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 using nn::Module;
 using nn::transformer::KVCache;
 using nn::transformer::MultiHeadAttention;

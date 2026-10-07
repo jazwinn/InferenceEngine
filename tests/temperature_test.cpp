@@ -16,7 +16,7 @@ using generation::Greedy;
 using generation::LogitsProcessor;
 using generation::ProcessorList;
 using generation::Temperature;
-using math::Tensor;
+using tensor::Tensor;
 
 namespace {
 Tensor<float> Scores(std::initializer_list<float> values) {

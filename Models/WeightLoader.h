@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "NeuralNet/Module.h"
 #include "Serialize/Safetensors.h"
 
@@ -17,7 +17,7 @@ namespace models
 {
 
     template <typename T>
-    using Weights = std::map<std::string, math::Tensor<T>>;
+    using Weights = std::map<std::string, tensor::Tensor<T>>;
 
     struct RenameRule
     {

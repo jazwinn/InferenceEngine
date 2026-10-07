@@ -4,12 +4,12 @@
 #include <cstddef>
 #include <stdexcept>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "NeuralNet/Transformer/TransformerConfig.h"
 
 namespace nn::transformer{
 
-    using math::Tensor;
+    using tensor::Tensor;
     using nn::transformer::config::RopeScaling;
     using nn::transformer::config::RopeScalingType;
 

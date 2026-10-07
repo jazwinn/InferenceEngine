@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "NeuralNet/Module.h"
 
 namespace nn

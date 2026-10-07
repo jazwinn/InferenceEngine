@@ -55,10 +55,10 @@ int main() {
 
       cache.Reset();
 
-      math::Tensor<int64_t> prompt({1, ids.size()});
+      tensor::Tensor<int64_t> prompt({1, ids.size()});
       for (size_t i = 0; i < ids.size(); ++i) prompt(0, i) = ids[i];
 
-      math::Tensor<float> logits = model.Forward(prompt, &cache);
+      tensor::Tensor<float> logits = model.Forward(prompt, &cache);
       size_t last = ids.size() - 1;
 
       std::string answer;
@@ -73,7 +73,7 @@ int main() {
 
         if (ids.size() >= contextSize) break;
 
-        math::Tensor<int64_t> next({1, 1});
+        tensor::Tensor<int64_t> next({1, 1});
         next(0, 0) = best;
         logits = model.Forward(next, &cache);
         last = 0;

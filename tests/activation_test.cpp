@@ -18,7 +18,7 @@ using nn::SiLU;
 using nn::Softmax;
 using nn::SwiGLU;
 using nn::Tanh;
-using math::Tensor;
+using tensor::Tensor;
 using nn::Module;
 
 namespace {

@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "NeuralNet/Module.h"
 #include "NeuralNet/Linear.h"
 #include "NeuralNet/Activation.h"
@@ -12,7 +12,7 @@
 
 namespace nn::transformer{
 
-    using math::Tensor;
+    using tensor::Tensor;
     using nn::Module;
     using nn::Linear;
     using nn::transformer::config::TransformerConfig;

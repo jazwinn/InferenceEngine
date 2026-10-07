@@ -3,10 +3,10 @@
 #include <cstddef>
 #include <stdexcept>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 
 namespace generation{
-    using math::Tensor;
+    using tensor::Tensor;
 
     template <typename T>
     class Sampler

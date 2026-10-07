@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "NeuralNet/Module.h"
 #include "NeuralNet/Transformer/Normal/Norm.h"
 

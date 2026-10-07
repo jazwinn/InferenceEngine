@@ -24,7 +24,7 @@ else()
 endif()
 
 add_subdirectory(Generation)
-add_subdirectory(Math)
+add_subdirectory(Tensor)
 add_subdirectory(CUDA)
 add_subdirectory(NeuralNet)
 add_subdirectory(Reflection)

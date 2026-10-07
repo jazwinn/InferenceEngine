@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <Math/Tensor.h>
+#include <Tensor/Tensor.h>
 
 #include <limits>
 #include <span>
@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 
 namespace {
 
@@ -247,7 +247,7 @@ TEST(TensorMatMul, KnownProduct) {
     Tensor<float> b({3, 2});
     IotaFill(b);
 
-    const Tensor<float> c = math::MatMul(a, b);
+    const Tensor<float> c = tensor::MatMul(a, b);
 
     EXPECT_EQ(c.Shape(), (std::vector<size_t>{2, 2}));
     EXPECT_FLOAT_EQ(c(0, 0), 22.0f);
@@ -264,7 +264,7 @@ TEST(TensorMatMul, IdentityIsNeutral) {
     id(0, 0) = 1.0f;
     id(1, 1) = 1.0f;
 
-    const Tensor<float> c = math::MatMul(a, id);
+    const Tensor<float> c = tensor::MatMul(a, id);
     EXPECT_FLOAT_EQ(c(0, 0), 1.0f);
     EXPECT_FLOAT_EQ(c(0, 1), 2.0f);
     EXPECT_FLOAT_EQ(c(1, 0), 3.0f);
@@ -277,28 +277,28 @@ TEST(TensorMatMul, IsNotCommutative) {
     Tensor<float> b({2, 2}, 2.0f);
     b(0, 1) = 5.0f;
 
-    const Tensor<float> ab = math::MatMul(a, b);
-    const Tensor<float> ba = math::MatMul(b, a);
+    const Tensor<float> ab = tensor::MatMul(a, b);
+    const Tensor<float> ba = tensor::MatMul(b, a);
     EXPECT_NE(ab(0, 1), ba(0, 1));
 }
 
 TEST(TensorMatMul, RejectsMismatchedInnerDimensions) {
     Tensor<float> a({2, 3}, 1.0f);
     Tensor<float> b({2, 3}, 1.0f);   // inner dims 3 vs 2
-    EXPECT_THROW(math::MatMul(a, b), std::invalid_argument);
+    EXPECT_THROW(tensor::MatMul(a, b), std::invalid_argument);
 }
 
 TEST(TensorMatMul, RejectsNonMatrixOperands) {
     Tensor<float> vec({3}, 1.0f);
     Tensor<float> mat({3, 3}, 1.0f);
-    EXPECT_THROW(math::MatMul(vec, mat), std::invalid_argument);
-    EXPECT_THROW(math::MatMul(mat, vec), std::invalid_argument);
+    EXPECT_THROW(tensor::MatMul(vec, mat), std::invalid_argument);
+    EXPECT_THROW(tensor::MatMul(mat, vec), std::invalid_argument);
 }
 
 TEST(TensorMatMul, NonSquareShapesPropagate) {
     Tensor<float> a({4, 2}, 1.0f);
     Tensor<float> b({2, 7}, 1.0f);
-    const Tensor<float> c = math::MatMul(a, b);
+    const Tensor<float> c = tensor::MatMul(a, b);
 
     EXPECT_EQ(c.Shape(), (std::vector<size_t>{4, 7}));
     EXPECT_FLOAT_EQ(c(0, 0), 2.0f);   // sum over the shared dimension of 2
@@ -897,7 +897,7 @@ TEST(TensorViewOps, MatMulAcceptsATransposedView) {
     Tensor<float> a({2, 3});
     IotaFill(a);
 
-    const Tensor<float> product = math::MatMul(a, a.Transpose());
+    const Tensor<float> product = tensor::MatMul(a, a.Transpose());
 
     EXPECT_EQ(product.Shape(), (std::vector<size_t>{2, 2}));
     EXPECT_FLOAT_EQ(product(0, 0), 14.0f);
@@ -1245,7 +1245,7 @@ TEST(TensorSqrt, HandlesANonContiguousSource) {
 
 TEST(TensorSqrt, FreeFormForwardsToTheMember) {
     Tensor<float> a({1, 2}, 25.0f);
-    EXPECT_FLOAT_EQ(math::Sqrt(a)(0, 0), a.Sqrt()(0, 0));
+    EXPECT_FLOAT_EQ(tensor::Sqrt(a)(0, 0), a.Sqrt()(0, 0));
 }
 
 // --- Mean over the whole tensor ---------------------------------------------
@@ -1268,7 +1268,7 @@ TEST(TensorMeanAll, ThrowsOnAnEmptyTensor) {
 TEST(TensorMeanAll, FreeFormForwardsToTheMember) {
     Tensor<float> a({2, 3});
     IotaFill(a);
-    EXPECT_FLOAT_EQ(math::Mean(a)(0), a.Mean()(0));
+    EXPECT_FLOAT_EQ(tensor::Mean(a)(0), a.Mean()(0));
 }
 
 // --- Mean over one axis -----------------------------------------------------
@@ -1411,8 +1411,8 @@ TEST(TensorMeanAxis, FreeFormForwardsToTheMember) {
     Tensor<float> a({2, 3});
     IotaFill(a);
 
-    EXPECT_FLOAT_EQ(math::Mean(a, 1)(0), a.Mean(1)(0));
-    EXPECT_EQ(math::Mean(a, 1, true).Shape(), a.Mean(1, true).Shape());
+    EXPECT_FLOAT_EQ(tensor::Mean(a, 1)(0), a.Mean(1)(0));
+    EXPECT_EQ(tensor::Mean(a, 1, true).Shape(), a.Mean(1, true).Shape());
 }
 
 TEST(TensorMeanAxis, WorksWithDouble) {
@@ -1547,7 +1547,7 @@ TEST(TensorMatMulBatched, RankThreeMultipliesEachBatchIndependently) {
     Tensor<float> b({2, 2, 2});
     IotaFill(b);
 
-    const Tensor<float> c = math::MatMul(a, b);
+    const Tensor<float> c = tensor::MatMul(a, b);
 
     ASSERT_EQ(c.Shape(), (std::vector<size_t>{2, 2, 2}));
 
@@ -1571,7 +1571,7 @@ TEST(TensorMatMulBatched, BatchesDoNotLeakIntoEachOther) {
 
     Tensor<float> b({2, 2, 1}, 1.0f);
 
-    const Tensor<float> c = math::MatMul(a, b);
+    const Tensor<float> c = tensor::MatMul(a, b);
 
     ASSERT_EQ(c.Shape(), (std::vector<size_t>{2, 1, 1}));
     EXPECT_FLOAT_EQ(c(0, 0, 0), 2.0f);
@@ -1582,7 +1582,7 @@ TEST(TensorMatMulBatched, NonSquareShapesPropagate) {
     Tensor<float> a({3, 2, 4}, 1.0f);
     Tensor<float> b({3, 4, 5}, 1.0f);
 
-    const Tensor<float> c = math::MatMul(a, b);
+    const Tensor<float> c = tensor::MatMul(a, b);
 
     EXPECT_EQ(c.Shape(), (std::vector<size_t>{3, 2, 5}));
     EXPECT_FLOAT_EQ(c(0, 0, 0), 4.0f) << "sum over the shared dimension of 4";
@@ -1592,7 +1592,7 @@ TEST(TensorMatMulBatched, RankFourBatchesOverTwoLeadingAxes) {
     Tensor<float> a({2, 3, 2, 2}, 1.0f);
     Tensor<float> b({2, 3, 2, 2}, 2.0f);
 
-    const Tensor<float> c = math::MatMul(a, b);
+    const Tensor<float> c = tensor::MatMul(a, b);
 
     EXPECT_EQ(c.Shape(), (std::vector<size_t>{2, 3, 2, 2}));
     EXPECT_FLOAT_EQ(c(1, 2, 1, 1), 4.0f);
@@ -1603,7 +1603,7 @@ TEST(TensorMatMulBatched, BatchDimensionsBroadcast) {
     Tensor<float> a({3, 2, 2}, 1.0f);
     Tensor<float> b({2, 2}, 2.0f);
 
-    const Tensor<float> c = math::MatMul(a, b);
+    const Tensor<float> c = tensor::MatMul(a, b);
 
     ASSERT_EQ(c.Shape(), (std::vector<size_t>{3, 2, 2}));
     for (size_t batch = 0; batch < 3; ++batch) {
@@ -1615,7 +1615,7 @@ TEST(TensorMatMulBatched, BroadcastsALengthOneBatchAxis) {
     Tensor<float> a({1, 2, 2}, 1.0f);
     Tensor<float> b({4, 2, 2}, 1.0f);
 
-    const Tensor<float> c = math::MatMul(a, b);
+    const Tensor<float> c = tensor::MatMul(a, b);
 
     EXPECT_EQ(c.Shape(), (std::vector<size_t>{4, 2, 2}));
     EXPECT_FLOAT_EQ(c(3, 1, 1), 2.0f);
@@ -1625,14 +1625,14 @@ TEST(TensorMatMulBatched, RejectsIncompatibleBatchShapes) {
     Tensor<float> a({2, 2, 2}, 1.0f);
     Tensor<float> b({3, 2, 2}, 1.0f);
 
-    EXPECT_THROW(math::MatMul(a, b), std::invalid_argument);
+    EXPECT_THROW(tensor::MatMul(a, b), std::invalid_argument);
 }
 
 TEST(TensorMatMulBatched, RejectsMismatchedInnerDimension) {
     Tensor<float> a({2, 2, 3}, 1.0f);
     Tensor<float> b({2, 4, 2}, 1.0f);
 
-    EXPECT_THROW(math::MatMul(a, b), std::invalid_argument);
+    EXPECT_THROW(tensor::MatMul(a, b), std::invalid_argument);
 }
 
 TEST(TensorMatMulBatched, MatchesPerBatchTwoDimensionalResults) {
@@ -1641,7 +1641,7 @@ TEST(TensorMatMulBatched, MatchesPerBatchTwoDimensionalResults) {
     Tensor<float> b({2, 3, 2});
     IotaFill(b);
 
-    const Tensor<float> batched = math::MatMul(a, b);
+    const Tensor<float> batched = tensor::MatMul(a, b);
 
     for (size_t batch = 0; batch < 2; ++batch) {
         Tensor<float> a2({2, 3});
@@ -1651,7 +1651,7 @@ TEST(TensorMatMulBatched, MatchesPerBatchTwoDimensionalResults) {
         for (size_t i = 0; i < 3; ++i)
             for (size_t j = 0; j < 2; ++j) b2(i, j) = b(batch, i, j);
 
-        const Tensor<float> expected = math::MatMul(a2, b2);
+        const Tensor<float> expected = tensor::MatMul(a2, b2);
         for (size_t i = 0; i < 2; ++i) {
             for (size_t j = 0; j < 2; ++j) {
                 EXPECT_FLOAT_EQ(batched(batch, i, j), expected(i, j))
@@ -1666,7 +1666,7 @@ TEST(TensorMatMulBatched, AcceptsATransposedViewAsTheRightOperand) {
     Tensor<float> q({2, 3, 4});
     IotaFill(q);
 
-    const Tensor<float> scores = math::MatMul(q, q.Transpose(1, 2));
+    const Tensor<float> scores = tensor::MatMul(q, q.Transpose(1, 2));
 
     ASSERT_EQ(scores.Shape(), (std::vector<size_t>{2, 3, 3}));
 
@@ -1687,7 +1687,7 @@ TEST(TensorMatMulBatched, ScoreMatrixIsSymmetricForSelfAttention) {
     Tensor<float> q({1, 3, 2});
     IotaFill(q);
 
-    const Tensor<float> scores = math::MatMul(q, q.Transpose(1, 2));
+    const Tensor<float> scores = tensor::MatMul(q, q.Transpose(1, 2));
 
     for (size_t i = 0; i < 3; ++i) {
         for (size_t j = 0; j < 3; ++j) {
@@ -1704,7 +1704,7 @@ TEST(TensorMatMulBatched, HandlesNonContiguousLeftOperand) {
     ASSERT_FALSE(view.IsContiguous());
 
     Tensor<float> b({2, 4, 1}, 1.0f);
-    const Tensor<float> c = math::MatMul(view, b);
+    const Tensor<float> c = tensor::MatMul(view, b);
 
     ASSERT_EQ(c.Shape(), (std::vector<size_t>{2, 3, 1}));
     for (size_t batch = 0; batch < 2; ++batch) {
@@ -1720,15 +1720,15 @@ TEST(TensorMatMulBatched, StillRejectsRankOneOperands) {
     Tensor<float> vec({3}, 1.0f);
     Tensor<float> mat({3, 3}, 1.0f);
 
-    EXPECT_THROW(math::MatMul(vec, mat), std::invalid_argument);
-    EXPECT_THROW(math::MatMul(mat, vec), std::invalid_argument);
+    EXPECT_THROW(tensor::MatMul(vec, mat), std::invalid_argument);
+    EXPECT_THROW(tensor::MatMul(mat, vec), std::invalid_argument);
 }
 
 TEST(TensorMatMulBatched, WorksWithDouble) {
     Tensor<double> a({2, 2, 2}, 0.5);
     Tensor<double> b({2, 2, 2}, 4.0);
 
-    const Tensor<double> c = math::MatMul(a, b);
+    const Tensor<double> c = tensor::MatMul(a, b);
 
     EXPECT_EQ(c.Shape(), (std::vector<size_t>{2, 2, 2}));
     EXPECT_DOUBLE_EQ(c(1, 0, 0), 4.0);
@@ -1802,7 +1802,7 @@ TEST(TensorTransposeNegative, FreeFormAcceptsNegativeAxes) {
     Tensor<float> a({2, 3, 4});
     IotaFill(a);
 
-    EXPECT_EQ(math::Transpose(a, -2, -1).Shape(), (std::vector<size_t>{2, 4, 3}));
+    EXPECT_EQ(tensor::Transpose(a, -2, -1).Shape(), (std::vector<size_t>{2, 4, 3}));
 }
 
 TEST(TensorTransposeNegative, FeedsBatchedMatMulDirectly) {
@@ -1810,7 +1810,7 @@ TEST(TensorTransposeNegative, FeedsBatchedMatMulDirectly) {
     Tensor<float> q({2, 3, 4});
     IotaFill(q);
 
-    const Tensor<float> scores = math::MatMul(q, q.Transpose(-2, -1));
+    const Tensor<float> scores = tensor::MatMul(q, q.Transpose(-2, -1));
 
     ASSERT_EQ(scores.Shape(), (std::vector<size_t>{2, 3, 3}));
     for (size_t h = 0; h < 2; ++h) {
@@ -2134,7 +2134,7 @@ TEST(TensorCopyInto, FillsAContiguousRow) {
     Tensor<float> src({1, 3});
     src(0, 0) = 7.0f; src(0, 1) = 8.0f; src(0, 2) = 9.0f;
 
-    math::CopyInto(dst.Slice(0, 2, 1), src);
+    tensor::CopyInto(dst.Slice(0, 2, 1), src);
 
     const float expected[4][3] = {{0, 0, 0}, {0, 0, 0}, {7, 8, 9}, {0, 0, 0}};
     for (size_t i = 0; i < 4; ++i)
@@ -2147,7 +2147,7 @@ TEST(TensorCopyInto, WritesThroughToTheParentStorage) {
     Tensor<float> view = dst.Slice(0, 1, 1);
     Tensor<float> src({1, 2}, 5.0f);
 
-    math::CopyInto(view, src);
+    tensor::CopyInto(view, src);
 
     EXPECT_FLOAT_EQ(dst(1, 0), 5.0f) << "CopyInto must not copy the view";
     EXPECT_FLOAT_EQ(dst(1, 1), 5.0f);
@@ -2159,7 +2159,7 @@ TEST(TensorCopyInto, SourceIsUnchanged) {
     Tensor<float> src({2, 2});
     IotaFill(src);
 
-    math::CopyInto(dst, src);
+    tensor::CopyInto(dst, src);
 
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 2; ++j)
@@ -2170,7 +2170,7 @@ TEST(TensorCopyInto, DoesNotAliasSourceAndDestination) {
     Tensor<float> dst({2, 2});
     Tensor<float> src({2, 2}, 3.0f);
 
-    math::CopyInto(dst, src);
+    tensor::CopyInto(dst, src);
     src.Fill(9.0f);
 
     EXPECT_FLOAT_EQ(dst(0, 0), 3.0f) << "CopyInto must copy values, not share storage";
@@ -2186,7 +2186,7 @@ TEST(TensorCopyInto, FillsOnePositionAcrossEveryHead) {
     Tensor<float> src({1, kHeads, 1, kDim});
     Iota(src);  // 1..6 in row-major order
 
-    math::CopyInto(cache.Slice(2, 2, 1), src);
+    tensor::CopyInto(cache.Slice(2, 2, 1), src);
 
     for (size_t h = 0; h < kHeads; ++h)
         for (size_t s = 0; s < kMaxSeq; ++s)
@@ -2206,7 +2206,7 @@ TEST(TensorCopyInto, FillsOnePositionAcrossEveryHeadAndBatch) {
     Tensor<float> src({kBatch, kHeads, 1, kDim});
     Iota(src);  // 1..12
 
-    math::CopyInto(cache.Slice(2, 2, 1), src);
+    tensor::CopyInto(cache.Slice(2, 2, 1), src);
 
     for (size_t b = 0; b < kBatch; ++b)
         for (size_t h = 0; h < kHeads; ++h)
@@ -2224,7 +2224,7 @@ TEST(TensorCopyInto, LeavesNeighbouringPositionsUntouched) {
     Tensor<float> cache({1, 2, 5, 3}, -1.0f);
     Tensor<float> src({1, 2, 1, 3}, 42.0f);
 
-    math::CopyInto(cache.Slice(2, 2, 1), src);
+    tensor::CopyInto(cache.Slice(2, 2, 1), src);
 
     for (size_t h = 0; h < 2; ++h)
         for (size_t s = 0; s < 5; ++s)
@@ -2240,7 +2240,7 @@ TEST(TensorCopyInto, FillsAMultiPositionWindow) {
     Tensor<float> src({1, 2, 3, 2});
     Iota(src);  // 1..12
 
-    math::CopyInto(cache.Slice(2, 1, 3), src);  // positions 1, 2, 3
+    tensor::CopyInto(cache.Slice(2, 1, 3), src);  // positions 1, 2, 3
 
     for (size_t h = 0; h < 2; ++h)
         for (size_t s = 0; s < 5; ++s)
@@ -2259,7 +2259,7 @@ TEST(TensorCopyInto, FillsAColumnWhoseElementsAreNotAdjacent) {
     Tensor<float> src({4, 1});
     IotaFill(src);  // 1..4
 
-    math::CopyInto(dst.Slice(1, 1, 1), src);  // middle column only
+    tensor::CopyInto(dst.Slice(1, 1, 1), src);  // middle column only
 
     for (size_t i = 0; i < 4; ++i) {
         EXPECT_FLOAT_EQ(dst(i, 0), -1.0f) << "row " << i;
@@ -2273,7 +2273,7 @@ TEST(TensorCopyInto, AcceptsASlicedSourceAsWell) {
     IotaFill(big);  // 1..12
     Tensor<float> dst({2, 3}, -1.0f);
 
-    math::CopyInto(dst, big.Slice(0, 1, 2));  // rows 1 and 2 -> 4..9
+    tensor::CopyInto(dst, big.Slice(0, 1, 2));  // rows 1 and 2 -> 4..9
 
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 3; ++j)
@@ -2292,7 +2292,7 @@ TEST(TensorCopyInto, HandlesBothSidesStridedAtOnce) {
 
     ASSERT_FALSE(src.IsContiguous());
     ASSERT_FALSE(dst.IsContiguous());
-    math::CopyInto(dst, src);
+    tensor::CopyInto(dst, src);
 
     for (size_t h = 0; h < 2; ++h)
         for (size_t d = 0; d < 3; ++d)
@@ -2304,7 +2304,7 @@ TEST(TensorCopyInto, CopiesIntoATransposedView) {
     Tensor<float> src({3, 2});
     IotaFill(src);  // 1..6
 
-    math::CopyInto(dst.Transpose(), src);  // dst^T is [3, 2] with strides [1, 3]
+    tensor::CopyInto(dst.Transpose(), src);  // dst^T is [3, 2] with strides [1, 3]
 
     for (size_t i = 0; i < 3; ++i)
         for (size_t j = 0; j < 2; ++j)
@@ -2315,21 +2315,21 @@ TEST(TensorCopyInto, CopiesIntoATransposedView) {
 
 TEST(TensorCopyInto, RejectsAShapeMismatch) {
     Tensor<float> dst({2, 3});
-    EXPECT_THROW(math::CopyInto(dst, Tensor<float>({2, 2})), std::invalid_argument);
-    EXPECT_THROW(math::CopyInto(dst, Tensor<float>({3, 2})), std::invalid_argument);
-    EXPECT_THROW(math::CopyInto(dst, Tensor<float>({6})), std::invalid_argument)
+    EXPECT_THROW(tensor::CopyInto(dst, Tensor<float>({2, 2})), std::invalid_argument);
+    EXPECT_THROW(tensor::CopyInto(dst, Tensor<float>({3, 2})), std::invalid_argument);
+    EXPECT_THROW(tensor::CopyInto(dst, Tensor<float>({6})), std::invalid_argument)
         << "same element count is not the same shape";
-    EXPECT_THROW(math::CopyInto(dst, Tensor<float>({1, 2, 3})), std::invalid_argument)
+    EXPECT_THROW(tensor::CopyInto(dst, Tensor<float>({1, 2, 3})), std::invalid_argument)
         << "rank must match too";
 }
 
 TEST(TensorCopyInto, EmptyTensorsAreANoOp) {
-    EXPECT_NO_THROW(math::CopyInto(Tensor<float>(), Tensor<float>()));
+    EXPECT_NO_THROW(tensor::CopyInto(Tensor<float>(), Tensor<float>()));
 }
 
 TEST(TensorCopyInto, CopiesASingleElement) {
     Tensor<float> dst({1, 1, 1, 1});
-    math::CopyInto(dst, Tensor<float>({1, 1, 1, 1}, 4.0f));
+    tensor::CopyInto(dst, Tensor<float>({1, 1, 1, 1}, 4.0f));
     EXPECT_FLOAT_EQ(dst(0, 0, 0, 0), 4.0f);
 }
 
@@ -2338,7 +2338,7 @@ TEST(TensorCopyInto, WholeTensorRoundTripsEveryElement) {
     IotaFill(src);
     Tensor<float> dst({2, 3, 4}, -1.0f);
 
-    math::CopyInto(dst, src);
+    tensor::CopyInto(dst, src);
 
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 3; ++j)
@@ -2349,7 +2349,7 @@ TEST(TensorCopyInto, WholeTensorRoundTripsEveryElement) {
 
 TEST(TensorCopyInto, WorksForOtherElementTypes) {
     Tensor<int> dst({2, 2}, -1);
-    math::CopyInto(dst.Slice(0, 1, 1), Tensor<int>({1, 2}, 6));
+    tensor::CopyInto(dst.Slice(0, 1, 1), Tensor<int>({1, 2}, 6));
     EXPECT_EQ(dst(0, 0), -1);
     EXPECT_EQ(dst(1, 1), 6);
 }
@@ -2415,7 +2415,7 @@ TEST(TensorUnsqueeze, BroadcastsInMatMulWithoutCopying) {
     const Tensor<float> k = kv.Slice(1, 0, 2).Unsqueeze(1);
     Tensor<float> q({2, 3, 1, 3}, 1.0f);
 
-    const Tensor<float> scores = math::MatMul(q, k.Transpose(-2, -1));
+    const Tensor<float> scores = tensor::MatMul(q, k.Transpose(-2, -1));
 
     ASSERT_EQ(scores.Shape(), (std::vector<size_t>{2, 3, 1, 2}));
     for (size_t h = 0; h < 2; ++h)

@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "Models/WeightLoader.h"
 
 namespace models::gpt2
@@ -36,7 +36,7 @@ namespace models::gpt2
         }
 
         template <typename T>
-        void Insert(Weights<T> &weights, std::string name, math::Tensor<T> tensor)
+        void Insert(Weights<T> &weights, std::string name, tensor::Tensor<T> tensor)
         {
             if (!weights.emplace(name, std::move(tensor)).second)
             {
@@ -45,7 +45,7 @@ namespace models::gpt2
         }
 
         template <typename T>
-        void SplitQKV(Weights<T> &weights, const std::string &name, const math::Tensor<T> &fused)
+        void SplitQKV(Weights<T> &weights, const std::string &name, const tensor::Tensor<T> &fused)
         {
             const size_t width = fused.Shape()[0];
             if (width % 3 != 0 || (fused.Rank() == 2 && width != 3 * fused.Shape()[1]))
@@ -106,7 +106,7 @@ namespace models::gpt2
             auto node = checkpoint.extract(checkpoint.begin());
             const std::string &key = node.key();
             std::string name = key.starts_with("transformer.") ? key.substr(12) : key;
-            math::Tensor<T> tensor = std::move(node.mapped());
+            tensor::Tensor<T> tensor = std::move(node.mapped());
 
             if (detail::IsBuffer(name))
             {

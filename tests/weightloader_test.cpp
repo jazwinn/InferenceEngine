@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 using models::LoadWeights;
 using models::Rename;
 using models::RenameRule;

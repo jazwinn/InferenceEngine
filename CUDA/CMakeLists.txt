@@ -17,7 +17,7 @@ set_target_properties(cuda_kernels PROPERTIES
 )
 
 target_link_libraries(cuda_kernels
-    PUBLIC InferenceEngine::Math
+    PUBLIC InferenceEngine::Tensor
     PRIVATE CUDA::cudart_static
 )
 

@@ -3,7 +3,7 @@
 #include <memory>
 
 #include "NeuralNet/Module.h"
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "NeuralNet/Linear.h"
 #include "NeuralNet/Transformer/RoPE.h"
 #include "NeuralNet/Transformer/KVCache.h"
@@ -14,8 +14,8 @@ namespace nn::transformer{
 
     using nn::Linear;
     using nn::Module;
-    using math::Tensor;
-    using math::CopyInto;
+    using tensor::Tensor;
+    using tensor::CopyInto;
     using nn::transformer::config::TransformerConfig;
     using nn::transformer::config::PositionEncoding;
 

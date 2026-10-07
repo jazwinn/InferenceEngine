@@ -6,7 +6,7 @@
 #include <type_traits>
 
 #include "Module.h"
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 
 namespace nn
 {

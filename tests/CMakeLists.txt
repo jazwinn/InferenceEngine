@@ -3,7 +3,7 @@ include(GoogleTest)
 
 add_executable(math_tests tensor_test.cpp)
 target_link_libraries(math_tests PRIVATE
-    InferenceEngine::Math
+    InferenceEngine::Tensor
     GTest::gtest
     GTest::gtest_main
 )

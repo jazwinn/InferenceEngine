@@ -5,13 +5,13 @@
 #include <vector>
 #include <stdexcept>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "NeuralNet/Activation.h"
 
 namespace nn::transformer
 {
 
-    using math::Tensor;
+    using tensor::Tensor;
     using nn::Softmax;
     
     inline size_t ValidatedDivide(size_t numerator, size_t denominator)

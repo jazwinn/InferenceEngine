@@ -4,11 +4,11 @@
 #include <vector>
 #include <stdexcept>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 
 namespace nn::transformer{
 
-    using math::Tensor;
+    using tensor::Tensor;
 
     template <typename T>
     struct KVLayer{

@@ -11,7 +11,8 @@
 #include <stdexcept>
 #include <random>
 
-namespace math {
+namespace tensor {
+    
 
     namespace detail {
 

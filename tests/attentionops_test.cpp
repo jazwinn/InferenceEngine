@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 using nn::transformer::MergeHeads;
 using nn::transformer::NormalizeMask;
 using nn::transformer::SDPA;

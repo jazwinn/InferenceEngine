@@ -10,7 +10,7 @@ Llama 3.2 1B Instruct chats end to end: chat template → tokenize → forward p
 
 | Directory | Contents |
 |---|---|
-| `Math/` | `Tensor<T>`: shapes, strides, views (reshape, slice, permute, transpose, squeeze/unsqueeze), broadcasting, batched `MatMul`, reductions, masked fill |
+| `Tensor/` | `Tensor<T>`: shapes, strides, views (reshape, slice, permute, transpose, squeeze/unsqueeze), broadcasting, batched `MatMul`, reductions, masked fill |
 | `NeuralNet/` | `Module` base (named parameters, submodules), `Linear`, `Embedding`, `Sequential`, activations (ReLU, GELU, GELU-tanh, SiLU, SwiGLU, Sigmoid, Tanh, Softmax) |
 | `NeuralNet/Transformer/` | `GroupQueryAttention` (MHA/GQA/MQA), `RotaryEmbedding` (RoPE with scaling), `MLP` (plain or gated), `KVCache`, `DecoderBlock`/`Decoder`, `TransformerConfig` |
 | `NeuralNet/Transformer/Normal/` | `Norm` base, `LayerNorm`, `RMSNorm`, `MakeNorm` (picks one from the config) |

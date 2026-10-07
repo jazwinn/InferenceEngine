@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 
 namespace serialize
 {
@@ -369,12 +369,12 @@ namespace serialize
     }
 
     template <typename T = float>
-    std::map<std::string, math::Tensor<T>> ReadSafetensors(const std::string &path)
+    std::map<std::string, tensor::Tensor<T>> ReadSafetensors(const std::string &path)
     {
         std::ifstream file = detail::Open(path);
         const SafetensorsHeader header = detail::ParseHeader(file);
 
-        std::map<std::string, math::Tensor<T>> tensors;
+        std::map<std::string, tensor::Tensor<T>> tensors;
         std::vector<char> scratch;
 
         for (const auto &[name, entry] : header.tensors)
@@ -387,7 +387,7 @@ namespace serialize
                 }
             }
 
-            math::Tensor<T> tensor(entry.shape);
+            tensor::Tensor<T> tensor(entry.shape);
             file.seekg(static_cast<std::streamoff>(header.data_start + entry.begin));
             detail::ReadTensorData(file, entry, tensor.Data(), tensor.Size(), scratch);
             if (!file)

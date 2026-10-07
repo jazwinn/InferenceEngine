@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 using nn::Linear;
 using nn::Module;
 

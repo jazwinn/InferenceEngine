@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 using serialize::DType;
 using serialize::ReadSafetensors;
 using serialize::ReadSafetensorsHeader;

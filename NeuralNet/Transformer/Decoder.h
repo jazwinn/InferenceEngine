@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "NeuralNet/Module.h"
 #include "NeuralNet/Transformer/MLP.h"
 #include "NeuralNet/Transformer/RoPE.h"
@@ -17,7 +17,7 @@
 
 namespace nn::transformer
 {
-    using math::Tensor;
+    using tensor::Tensor;
     using nn::Module;
     using nn::transformer::norm::Norm;
     using nn::transformer::config::TransformerConfig;

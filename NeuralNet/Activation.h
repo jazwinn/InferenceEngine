@@ -4,13 +4,13 @@
 #include <cmath>
 #include <memory>
 
-#include "Math/Tensor.h"
+#include "Tensor/Tensor.h"
 #include "Module.h"
 #include "Linear.h"
 
 namespace nn{
 
-  using math::Tensor;
+  using tensor::Tensor;
   using nn::Module;
   using nn::Linear;
 
@@ -134,7 +134,7 @@ namespace nn{
     explicit Softmax(long long axis = -1) : m_axis(axis) {}
 
     Tensor<T> Forward(const Tensor<T> &input) {
-      const size_t axis = math::detail::NormalizeAxis(m_axis, input.Rank());
+      const size_t axis = tensor::detail::NormalizeAxis(m_axis, input.Rank());
 
       // Clone() compacts, so the flat decomposition below holds for views.
       Tensor<T> output = input.Clone();

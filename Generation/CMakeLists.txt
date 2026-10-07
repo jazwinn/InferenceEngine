@@ -1,7 +1,7 @@
 add_library(generation INTERFACE)
 add_library(InferenceEngine::Generation ALIAS generation)
 
-target_link_libraries(generation INTERFACE InferenceEngine::Math)
+target_link_libraries(generation INTERFACE InferenceEngine::Tensor)
 
 target_include_directories(generation INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>

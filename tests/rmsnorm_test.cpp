@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 using nn::Module;
 using nn::transformer::norm::RMSNorm;
 

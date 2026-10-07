@@ -14,7 +14,7 @@
 
 using nn::GELU;
 using nn::ReLU;
-using math::Tensor;
+using tensor::Tensor;
 using nn::Linear;
 using nn::Module;
 using nn::Sequential;

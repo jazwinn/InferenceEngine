@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 using nn::transformer::config::Activation;
 using nn::transformer::MLP;
 using nn::transformer::config::MLPType;

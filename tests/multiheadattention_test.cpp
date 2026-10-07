@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 using nn::Module;
 using nn::transformer::MultiHeadAttention;
 using nn::transformer::SplitHeads;
@@ -60,7 +60,7 @@ template <typename T>
 Tensor<T> WeightsOf(MultiHeadAttention<T>& attn, const Tensor<T>& x, bool causal) {
     Tensor<T> q = SplitHeads(attn.query->Forward(x), attn.num_heads, attn.head_dim);
     Tensor<T> k = SplitHeads(attn.key->Forward(x), attn.num_heads, attn.head_dim);
-    Tensor<T> scores = math::MatMul(q, k.Transpose(-2, -1)) * attn.scale;
+    Tensor<T> scores = tensor::MatMul(q, k.Transpose(-2, -1)) * attn.scale;
 
     if (causal) {
         const size_t seq = scores.Shape()[scores.Rank() - 1];
@@ -478,7 +478,7 @@ TEST(MultiHeadAttentionMask, MaskedKeysGetZeroWeight) {
 
     Tensor<float> q = SplitHeads(attn.query->Forward(x), attn.num_heads, attn.head_dim);
     Tensor<float> k = SplitHeads(attn.key->Forward(x), attn.num_heads, attn.head_dim);
-    Tensor<float> scores = math::MatMul(q, k.Transpose(-2, -1)) * attn.scale;
+    Tensor<float> scores = tensor::MatMul(q, k.Transpose(-2, -1)) * attn.scale;
 
     Tensor<bool> mask({4, 4}, false);
     for (size_t i = 0; i < 4; ++i) mask(i, 1) = true;

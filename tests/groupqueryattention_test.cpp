@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-using math::Tensor;
+using tensor::Tensor;
 using nn::transformer::GroupQueryAttention;
 using nn::transformer::KVCache;
 using nn::transformer::MultiHeadAttention;
