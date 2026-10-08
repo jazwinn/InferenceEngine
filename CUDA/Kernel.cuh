@@ -14,5 +14,13 @@ namespace cuda{
     template <typename T>
     void LaunchMatMulHost(const T* A, const T* B, T* C, size_t M, size_t N, size_t K);
 
-    
+    template <typename T>
+    void LaunchLinear(const DeviceBuffer<T>& dX, const DeviceBuffer<T>& dW, const DeviceBuffer<T>& dB, DeviceBuffer<T>& dY, size_t M, size_t in, size_t out);
+
+    template <typename T>
+    void LaunchLinearDevice(const T* dX, const T* dW, const T* dB, T* dY, size_t M, size_t in, size_t out);
+
+    template <typename T>
+    void LaunchLinearHost(const T* X, const T* W, const T* B, T* Y, size_t M, size_t in, size_t out);
+
 }

@@ -15,6 +15,9 @@ namespace tensor::detail {
     Tensor<T> MatMulCUDA(const Tensor<T>& A, const Tensor<T>& B,
                          const std::vector<size_t>& result_shape,
                          size_t rows, size_t inner, size_t cols) {
+        if (!A.IsCUDA() || !B.IsCUDA()) {
+            throw std::invalid_argument("MatMul (CUDA): operands must be on CUDA.");
+        }
         if (A.Rank() != 2 || B.Rank() != 2) {
             throw std::logic_error("MatMul (CUDA): only 2D operands are supported.");
         }
@@ -26,6 +29,37 @@ namespace tensor::detail {
         return result;
     }
 
+    template <typename T>
+    Tensor<T> LinearCUDA(const Tensor<T>& X, const Tensor<T>& W, const Tensor<T>& B) {
+        if (X.Size() == 0 || X.Rank() < 1) {
+            throw std::invalid_argument("Linear (CUDA): input must be non-empty.");
+        }
+        if (W.Rank() != 2) {
+            throw std::invalid_argument("Linear (CUDA): weight must be 2D (out, in).");
+        }
+        if (!X.IsCUDA() || !W.IsCUDA() || (B.Size() != 0 && !B.IsCUDA())) {
+            throw std::invalid_argument("Linear (CUDA): tensors are on different devices.");
+        }
+
+        const size_t in = X.Shape().back();
+        const size_t out = W.Shape()[0];
+        if (in != W.Shape()[1]) {
+            throw std::invalid_argument("Linear (CUDA): input features do not match weight.");
+        }
+        if (B.Size() != 0 && B.Size() != out) {
+            throw std::invalid_argument("Linear (CUDA): bias size must equal out_features.");
+        }
+        if (!X.IsContiguous() || !W.IsContiguous() || !B.IsContiguous()) {
+            throw std::logic_error("Linear (CUDA): operands must be contiguous.");
+        }
+
+        const size_t M = X.Size() / in;
+        std::vector<size_t> shape = X.Shape();
+        shape.back() = out;
+        Tensor<T> result(shape, Device::CUDA);
+        cuda::LaunchLinearDevice(X.Data(), W.Data(), B.Size() ? B.Data() : nullptr, result.Data(), M, in, out);
+        return result;
+    }
 }
 
 #endif

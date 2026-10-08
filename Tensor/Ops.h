@@ -271,4 +271,23 @@ namespace tensor {
         return tensor.Mean(axis, keepdim);
     }
 
+    template <typename T>
+    Tensor<T> Linear(const Tensor<T>& X, const Tensor<T>& W, const Tensor<T>& B = Tensor<T>()){
+        if (X.GetDevice() != W.GetDevice() || (B.Size() != 0 && B.GetDevice() != W.GetDevice())) {
+            throw std::invalid_argument("Linear: tensors are on different devices.");
+        }
+
+        if (W.IsCUDA()) {
+#ifdef IE_ENABLE_CUDA
+            return detail::LinearCUDA(X, W, B);
+#endif
+        }
+
+        Tensor<T> Y = MatMul(X, W.Transpose());
+        if (B.Size() != 0) {
+            Y += B;
+        }
+        return Y;
+    }
+
 }

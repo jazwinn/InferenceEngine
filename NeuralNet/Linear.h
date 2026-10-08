@@ -21,11 +21,7 @@ namespace nn{
         }
 
         Tensor<T> Forward(const Tensor<T>& input) {
-            Tensor<T> output = MatMul(input, weight->Transpose());
-            if (bias) {
-                output += *bias;
-            }
-            return output;
+            return tensor::Linear(input, *weight, bias ? *bias : Tensor<T>());
         }
     
         std::shared_ptr<Tensor<T>> weight;
