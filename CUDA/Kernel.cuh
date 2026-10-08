@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <vector>
 
 #include "CUDA/DeviceBuffer.h"
 
@@ -22,5 +23,11 @@ namespace cuda{
 
     template <typename T>
     void LaunchLinearHost(const T* X, const T* W, const T* B, T* Y, size_t M, size_t in, size_t out);
+
+    template <typename T>
+    void LaunchStridedCopyDevice(const T* src, T* dst,
+                                 const std::vector<size_t>& shape,
+                                 const std::vector<size_t>& src_stride,
+                                 const std::vector<size_t>& dst_stride);
 
 }

@@ -12,6 +12,7 @@
 
 namespace cuda{
     
+    //TODO: WMMA
     template<typename T>
     __global__ void MatMulKernel(const T* A, const T* B, T* C, size_t M, size_t N, size_t K){
         
