@@ -78,8 +78,8 @@ namespace nn::transformer{
 
             if (cache)
             {
-                CopyInto(cache->k.Slice(2, cache_len, seq), K);
-                CopyInto(cache->v.Slice(2, cache_len, seq), V);
+                CopyInto(K, cache->k.Slice(2, cache_len, seq));
+                CopyInto(V, cache->v.Slice(2, cache_len, seq));
                 K = cache->k.Slice(2, 0, cache_len + seq);
                 V = cache->v.Slice(2, 0, cache_len + seq);
             }

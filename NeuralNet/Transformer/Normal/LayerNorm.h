@@ -72,6 +72,9 @@ namespace nn::transformer::norm{
 
             // Clone() compacts, so the flat walk below is valid even when the
             // caller hands us a strided view.
+            input.RequireCPU("LayerNorm");
+            gamma->RequireCPU("LayerNorm");
+            beta->RequireCPU("LayerNorm");
             Tensor<T> output = input.Clone();
             const Tensor<T> gamma_c = gamma->Contiguous();
             const Tensor<T> beta_c = beta->Contiguous();

@@ -1,9 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <NeuralNet/Activation.h>
+#include <NeuralNet/Embedding.h>
 #include <NeuralNet/Linear.h>
 #include <NeuralNet/Module.h>
 #include <NeuralNet/Sequential.h>
+#include <NeuralNet/Transformer/Normal/LayerNorm.h>
+#include <NeuralNet/Transformer/RoPE.h>
 
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <vector>
@@ -239,4 +244,41 @@ TEST(ModuleToCUDA, ForwardWithCPUInputThrows) {
     linear.To(Device::CUDA);
     Tensor<float> input({4, 3}, 1.0f);
     EXPECT_THROW(linear.Forward(input), std::invalid_argument);
+}
+
+// --- CPU-only modules throw instead of touching GPU memory ------------------
+
+TEST(CPUOnlyModules, ActivationsThrowOnCUDAInput) {
+    Tensor<float> gpu({2, 3}, Device::CUDA);
+    EXPECT_THROW(nn::ReLU<float>().Forward(gpu), std::logic_error);
+    EXPECT_THROW(nn::GELU<float>().Forward(gpu), std::logic_error);
+    EXPECT_THROW(nn::GELUTanh<float>().Forward(gpu), std::logic_error);
+    EXPECT_THROW(nn::Sigmoid<float>().Forward(gpu), std::logic_error);
+    EXPECT_THROW(nn::SiLU<float>().Forward(gpu), std::logic_error);
+    EXPECT_THROW(nn::Tanh<float>().Forward(gpu), std::logic_error);
+    EXPECT_THROW(nn::Softmax<float>().Forward(gpu), std::logic_error);
+}
+
+TEST(CPUOnlyModules, LayerNormThrowsOnCUDAInputOrParameters) {
+    nn::transformer::norm::LayerNorm<float> norm(3);
+    EXPECT_THROW(norm.Forward(Tensor<float>({2, 3}, Device::CUDA)), std::logic_error);
+    norm.To(Device::CUDA);
+    EXPECT_THROW(norm.Forward(Tensor<float>({2, 3}, 1.0f)), std::logic_error);
+}
+
+TEST(CPUOnlyModules, EmbeddingThrowsOnCUDAIndicesOrTable) {
+    nn::Embedding<float> embedding(10, 4);
+    EXPECT_THROW(embedding.Forward(Tensor<int64_t>({3}, Device::CUDA)), std::logic_error);
+    embedding.To(Device::CUDA);
+    EXPECT_THROW(embedding.Forward(Tensor<int64_t>({3})), std::logic_error);
+}
+
+TEST(CPUOnlyModules, RoPEThrowsOnCUDAInput) {
+    nn::transformer::RotaryEmbedding<float> rope(4, 8);
+    EXPECT_THROW(rope.Apply(Tensor<float>({1, 2, 3, 4}, Device::CUDA), 0), std::logic_error);
+}
+
+TEST(CPUOnlyModules, MaskedFillThrowsOnCUDATensor) {
+    Tensor<float> gpu({2, 2}, Device::CUDA);
+    EXPECT_THROW(gpu.MaskedFill(Tensor<bool>({2, 2}, true), 0.0f), std::logic_error);
 }

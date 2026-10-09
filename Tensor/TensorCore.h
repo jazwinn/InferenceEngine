@@ -15,7 +15,8 @@
 #include "Tensor/detail/Shape.h"
 
 #ifdef IE_ENABLE_CUDA
-#include "CUDA/DeviceBuffer.h"
+#include "CUDA/Kernel.cuh"
+#include "CUDA/Memory.h"
 #endif
 
 namespace tensor {
@@ -119,13 +120,26 @@ namespace tensor {
             if (!m_data) {
                 return Tensor<T>();
             }
-            RequireCPU("Clone");
-            Tensor<T> result(m_shape);
+
+            Tensor<T> result(m_shape, m_device);
+
+        #ifdef IE_ENABLE_CUDA
+            if (IsCUDA()) {
+                if (IsContiguous()) {
+                    cuda::CopyDeviceToDevice(result.Data(), Data(), m_size * sizeof(T));
+                } else {
+                    cuda::LaunchStridedCopyDevice(Data(), result.Data(), m_shape, m_stride, result.m_stride);
+                }
+                return result;
+            }
+        #endif
+
             T* out = result.m_data.get();
             size_t i = 0;
             ForEach([&out, &i](const T& element) { out[i++] = element; });
             return result;
         }
+
 
         Tensor<T> Reshape(const std::vector<size_t>& new_shape) const {
             if (!m_data) {
@@ -440,6 +454,7 @@ namespace tensor {
             if (detail::BroadcastShape(m_shape, mask.Shape()) != m_shape) {
                 throw std::invalid_argument("Mask shape is not broadcast-compatible with the tensor.");
             }
+            RequireCPU("MaskedFill");
             mask.RequireCPU("MaskedFill");
 
             // Clone() holds this tensor compacted in row-major order, so the
@@ -478,10 +493,7 @@ namespace tensor {
                 return *this;
             }
 #ifdef IE_ENABLE_CUDA
-            if (IsCUDA() && !IsContiguous()) {
-                throw std::logic_error("To(): non-contiguous CUDA tensors need a copy kernel.");
-            }
-            const Tensor<T> src = IsCUDA() ? *this : Contiguous();
+            const Tensor<T> src = Contiguous();
             Tensor<T> result(m_shape, target);
             const size_t bytes = m_size * sizeof(T);
             if (target == Device::CUDA) {

@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <vector>
 
-#include "CUDA/DeviceBuffer.h"
+#include "CUDA/Memory.h"
 
 namespace cuda{
 

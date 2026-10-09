@@ -46,6 +46,9 @@ namespace nn
                 throw std::invalid_argument("Embedding: indices must not be empty.");
             }
 
+            indices.RequireCPU("Embedding");
+            weight->RequireCPU("Embedding");
+
             const size_t rows = NumEmbeddings();
             const size_t dim = EmbeddingDim();
 

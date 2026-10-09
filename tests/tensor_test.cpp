@@ -2134,7 +2134,7 @@ TEST(TensorCopyInto, FillsAContiguousRow) {
     Tensor<float> src({1, 3});
     src(0, 0) = 7.0f; src(0, 1) = 8.0f; src(0, 2) = 9.0f;
 
-    tensor::CopyInto(dst.Slice(0, 2, 1), src);
+    tensor::CopyInto(src, dst.Slice(0, 2, 1));
 
     const float expected[4][3] = {{0, 0, 0}, {0, 0, 0}, {7, 8, 9}, {0, 0, 0}};
     for (size_t i = 0; i < 4; ++i)
@@ -2147,7 +2147,7 @@ TEST(TensorCopyInto, WritesThroughToTheParentStorage) {
     Tensor<float> view = dst.Slice(0, 1, 1);
     Tensor<float> src({1, 2}, 5.0f);
 
-    tensor::CopyInto(view, src);
+    tensor::CopyInto(src, view);
 
     EXPECT_FLOAT_EQ(dst(1, 0), 5.0f) << "CopyInto must not copy the view";
     EXPECT_FLOAT_EQ(dst(1, 1), 5.0f);
@@ -2159,7 +2159,7 @@ TEST(TensorCopyInto, SourceIsUnchanged) {
     Tensor<float> src({2, 2});
     IotaFill(src);
 
-    tensor::CopyInto(dst, src);
+    tensor::CopyInto(src, dst);
 
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 2; ++j)
@@ -2170,7 +2170,7 @@ TEST(TensorCopyInto, DoesNotAliasSourceAndDestination) {
     Tensor<float> dst({2, 2});
     Tensor<float> src({2, 2}, 3.0f);
 
-    tensor::CopyInto(dst, src);
+    tensor::CopyInto(src, dst);
     src.Fill(9.0f);
 
     EXPECT_FLOAT_EQ(dst(0, 0), 3.0f) << "CopyInto must copy values, not share storage";
@@ -2186,7 +2186,7 @@ TEST(TensorCopyInto, FillsOnePositionAcrossEveryHead) {
     Tensor<float> src({1, kHeads, 1, kDim});
     Iota(src);  // 1..6 in row-major order
 
-    tensor::CopyInto(cache.Slice(2, 2, 1), src);
+    tensor::CopyInto(src, cache.Slice(2, 2, 1));
 
     for (size_t h = 0; h < kHeads; ++h)
         for (size_t s = 0; s < kMaxSeq; ++s)
@@ -2206,7 +2206,7 @@ TEST(TensorCopyInto, FillsOnePositionAcrossEveryHeadAndBatch) {
     Tensor<float> src({kBatch, kHeads, 1, kDim});
     Iota(src);  // 1..12
 
-    tensor::CopyInto(cache.Slice(2, 2, 1), src);
+    tensor::CopyInto(src, cache.Slice(2, 2, 1));
 
     for (size_t b = 0; b < kBatch; ++b)
         for (size_t h = 0; h < kHeads; ++h)
@@ -2224,7 +2224,7 @@ TEST(TensorCopyInto, LeavesNeighbouringPositionsUntouched) {
     Tensor<float> cache({1, 2, 5, 3}, -1.0f);
     Tensor<float> src({1, 2, 1, 3}, 42.0f);
 
-    tensor::CopyInto(cache.Slice(2, 2, 1), src);
+    tensor::CopyInto(src, cache.Slice(2, 2, 1));
 
     for (size_t h = 0; h < 2; ++h)
         for (size_t s = 0; s < 5; ++s)
@@ -2240,7 +2240,7 @@ TEST(TensorCopyInto, FillsAMultiPositionWindow) {
     Tensor<float> src({1, 2, 3, 2});
     Iota(src);  // 1..12
 
-    tensor::CopyInto(cache.Slice(2, 1, 3), src);  // positions 1, 2, 3
+    tensor::CopyInto(src, cache.Slice(2, 1, 3));  // positions 1, 2, 3
 
     for (size_t h = 0; h < 2; ++h)
         for (size_t s = 0; s < 5; ++s)
@@ -2259,7 +2259,7 @@ TEST(TensorCopyInto, FillsAColumnWhoseElementsAreNotAdjacent) {
     Tensor<float> src({4, 1});
     IotaFill(src);  // 1..4
 
-    tensor::CopyInto(dst.Slice(1, 1, 1), src);  // middle column only
+    tensor::CopyInto(src, dst.Slice(1, 1, 1));  // middle column only
 
     for (size_t i = 0; i < 4; ++i) {
         EXPECT_FLOAT_EQ(dst(i, 0), -1.0f) << "row " << i;
@@ -2273,7 +2273,7 @@ TEST(TensorCopyInto, AcceptsASlicedSourceAsWell) {
     IotaFill(big);  // 1..12
     Tensor<float> dst({2, 3}, -1.0f);
 
-    tensor::CopyInto(dst, big.Slice(0, 1, 2));  // rows 1 and 2 -> 4..9
+    tensor::CopyInto(big.Slice(0, 1, 2), dst);  // rows 1 and 2 -> 4..9
 
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 3; ++j)
@@ -2292,7 +2292,7 @@ TEST(TensorCopyInto, HandlesBothSidesStridedAtOnce) {
 
     ASSERT_FALSE(src.IsContiguous());
     ASSERT_FALSE(dst.IsContiguous());
-    tensor::CopyInto(dst, src);
+    tensor::CopyInto(src, dst);
 
     for (size_t h = 0; h < 2; ++h)
         for (size_t d = 0; d < 3; ++d)
@@ -2304,7 +2304,7 @@ TEST(TensorCopyInto, CopiesIntoATransposedView) {
     Tensor<float> src({3, 2});
     IotaFill(src);  // 1..6
 
-    tensor::CopyInto(dst.Transpose(), src);  // dst^T is [3, 2] with strides [1, 3]
+    tensor::CopyInto(src, dst.Transpose());  // dst^T is [3, 2] with strides [1, 3]
 
     for (size_t i = 0; i < 3; ++i)
         for (size_t j = 0; j < 2; ++j)
@@ -2315,11 +2315,11 @@ TEST(TensorCopyInto, CopiesIntoATransposedView) {
 
 TEST(TensorCopyInto, RejectsAShapeMismatch) {
     Tensor<float> dst({2, 3});
-    EXPECT_THROW(tensor::CopyInto(dst, Tensor<float>({2, 2})), std::invalid_argument);
-    EXPECT_THROW(tensor::CopyInto(dst, Tensor<float>({3, 2})), std::invalid_argument);
-    EXPECT_THROW(tensor::CopyInto(dst, Tensor<float>({6})), std::invalid_argument)
+    EXPECT_THROW(tensor::CopyInto(Tensor<float>({2, 2}), dst), std::invalid_argument);
+    EXPECT_THROW(tensor::CopyInto(Tensor<float>({3, 2}), dst), std::invalid_argument);
+    EXPECT_THROW(tensor::CopyInto(Tensor<float>({6}), dst), std::invalid_argument)
         << "same element count is not the same shape";
-    EXPECT_THROW(tensor::CopyInto(dst, Tensor<float>({1, 2, 3})), std::invalid_argument)
+    EXPECT_THROW(tensor::CopyInto(Tensor<float>({1, 2, 3}), dst), std::invalid_argument)
         << "rank must match too";
 }
 
@@ -2329,7 +2329,7 @@ TEST(TensorCopyInto, EmptyTensorsAreANoOp) {
 
 TEST(TensorCopyInto, CopiesASingleElement) {
     Tensor<float> dst({1, 1, 1, 1});
-    tensor::CopyInto(dst, Tensor<float>({1, 1, 1, 1}, 4.0f));
+    tensor::CopyInto(Tensor<float>({1, 1, 1, 1}, 4.0f), dst);
     EXPECT_FLOAT_EQ(dst(0, 0, 0, 0), 4.0f);
 }
 
@@ -2338,7 +2338,7 @@ TEST(TensorCopyInto, WholeTensorRoundTripsEveryElement) {
     IotaFill(src);
     Tensor<float> dst({2, 3, 4}, -1.0f);
 
-    tensor::CopyInto(dst, src);
+    tensor::CopyInto(src, dst);
 
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 3; ++j)
@@ -2349,7 +2349,7 @@ TEST(TensorCopyInto, WholeTensorRoundTripsEveryElement) {
 
 TEST(TensorCopyInto, WorksForOtherElementTypes) {
     Tensor<int> dst({2, 2}, -1);
-    tensor::CopyInto(dst.Slice(0, 1, 1), Tensor<int>({1, 2}, 6));
+    tensor::CopyInto(Tensor<int>({1, 2}, 6), dst.Slice(0, 1, 1));
     EXPECT_EQ(dst(0, 0), -1);
     EXPECT_EQ(dst(1, 1), 6);
 }

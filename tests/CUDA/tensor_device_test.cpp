@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <CUDA/Kernel.cuh>
 #include <Tensor/Tensor.h>
 
 #include <span>
@@ -102,9 +103,25 @@ TEST(TensorCUDATo, UploadIsIndependentOfSource) {
     EXPECT_EQ(Values(gpu), (std::vector<float>{1, 2, 3}));
 }
 
-TEST(TensorCUDATo, DownloadOfNonContiguousViewThrows) {
-    Tensor<float> gpu = Iota<float>({2, 3}).To(Device::CUDA);
-    EXPECT_THROW(gpu.Transpose().To(Device::CPU), std::logic_error);
+TEST(TensorCUDATo, DownloadOfTransposedViewMatchesCPU) {
+    Tensor<float> cpu = Iota<float>({2, 3});
+    Tensor<float> back = cpu.To(Device::CUDA).Transpose().To(Device::CPU);
+    EXPECT_FALSE(back.IsCUDA());
+    EXPECT_TRUE(back.IsContiguous());
+    EXPECT_EQ(back.Shape(), (std::vector<size_t>{3, 2}));
+    EXPECT_EQ(Values(back), Values(cpu.Transpose()));
+}
+
+TEST(TensorCUDATo, DownloadOfPermutedViewMatchesCPU) {
+    Tensor<float> cpu = Iota<float>({2, 3, 4});
+    Tensor<float> back = cpu.To(Device::CUDA).Permute(2, 0, 1).To(Device::CPU);
+    EXPECT_EQ(Values(back), Values(cpu.Permute(2, 0, 1)));
+}
+
+TEST(TensorCUDATo, DownloadOfInnerSliceMatchesCPU) {
+    Tensor<float> cpu = Iota<float>({3, 4});
+    Tensor<float> back = cpu.To(Device::CUDA).Slice(1, 1, 2).To(Device::CPU);
+    EXPECT_EQ(Values(back), (std::vector<float>{2, 3, 6, 7, 10, 11}));
 }
 
 // --- views ------------------------------------------------------------------
@@ -174,9 +191,140 @@ TEST(TensorCUDAViews, ViewsKeepStorageAliveAfterOriginalDies) {
     EXPECT_EQ(Values(view), (std::vector<float>{5, 6, 7, 8}));
 }
 
-TEST(TensorCUDAViews, ReshapeOfNonContiguousThrows) {
+TEST(TensorCUDAViews, ReshapeOfNonContiguousCopiesAndMatchesCPU) {
+    Tensor<float> cpu = Iota<float>({2, 3});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    Tensor<float> reshaped = gpu.Transpose().Reshape(6);
+    EXPECT_TRUE(reshaped.IsCUDA());
+    EXPECT_FALSE(reshaped.SharesStorage(gpu));
+    EXPECT_EQ(Values(reshaped), Values(cpu.Transpose().Reshape(6)));
+}
+
+TEST(TensorCUDAViews, ContiguousOfTransposeMatchesCPU) {
+    Tensor<float> cpu = Iota<float>({2, 3});
+    Tensor<float> c = cpu.To(Device::CUDA).Transpose().Contiguous();
+    EXPECT_TRUE(c.IsCUDA());
+    EXPECT_TRUE(c.IsContiguous());
+    EXPECT_EQ(c.Offset(), 0u);
+    EXPECT_EQ(Values(c), (std::vector<float>{1, 4, 2, 5, 3, 6}));
+}
+
+TEST(TensorCUDAViews, SplitHeadsPatternMatchesCPU) {
+    Tensor<float> cpu = Iota<float>({2, 5, 12});
+    auto split = [](const Tensor<float>& x) { return x.Reshape(2, 5, 3, 4).Transpose(1, 2).Contiguous(); };
+    Tensor<float> gpu = split(cpu.To(Device::CUDA));
+    EXPECT_TRUE(gpu.IsCUDA());
+    EXPECT_EQ(gpu.Shape(), (std::vector<size_t>{2, 3, 5, 4}));
+    EXPECT_EQ(Values(gpu), Values(split(cpu)));
+}
+
+TEST(TensorCUDAViews, MergeHeadsPatternMatchesCPU) {
+    Tensor<float> cpu = Iota<float>({2, 3, 5, 4});
+    auto merge = [](const Tensor<float>& x) { return x.Transpose(1, 2).Reshape(2, 5, 12); };
+    EXPECT_EQ(Values(merge(cpu.To(Device::CUDA))), Values(merge(cpu)));
+}
+
+// --- Clone ------------------------------------------------------------------
+
+TEST(TensorCUDAClone, ContiguousCloneIsIndependentCopy) {
     Tensor<float> gpu = Iota<float>({2, 3}).To(Device::CUDA);
-    EXPECT_THROW(gpu.Transpose().Reshape(6), std::logic_error);
+    Tensor<float> clone = gpu.Clone();
+    EXPECT_TRUE(clone.IsCUDA());
+    EXPECT_FALSE(clone.SharesStorage(gpu));
+    EXPECT_EQ(Values(clone), Values(gpu));
+}
+
+TEST(TensorCUDAClone, CloneOfSliceStartsAtOffsetZero) {
+    Tensor<float> gpu = Iota<float>({4, 3}).To(Device::CUDA);
+    Tensor<float> clone = gpu.Slice(0, 1, 2).Clone();
+    EXPECT_EQ(clone.Offset(), 0u);
+    EXPECT_EQ(Values(clone), (std::vector<float>{4, 5, 6, 7, 8, 9}));
+}
+
+TEST(TensorCUDAClone, CloneOfPermuteMatchesCPU) {
+    Tensor<double> cpu = Iota<double>({3, 2, 4});
+    Tensor<double> clone = cpu.To(Device::CUDA).Permute(1, 2, 0).Clone();
+    EXPECT_TRUE(clone.IsContiguous());
+    EXPECT_EQ(Values(clone), Values(cpu.Permute(1, 2, 0)));
+}
+
+TEST(TensorCUDAClone, CloneOfBoolMask) {
+    Tensor<bool> cpu({2, 3}, true);
+    Tensor<bool> clone = cpu.To(Device::CUDA).Transpose().Clone();
+    EXPECT_TRUE(clone.IsCUDA());
+    EXPECT_EQ(Values(clone), std::vector<bool>(6, true));
+}
+
+TEST(TensorCUDAClone, EmptyCloneStaysEmpty) {
+    Tensor<float> empty;
+    EXPECT_EQ(empty.Clone().Size(), 0u);
+}
+
+// --- CopyInto ---------------------------------------------------------------
+
+TEST(TensorCUDACopyInto, ContiguousCopyMatches) {
+    Tensor<float> src = Iota<float>({2, 3}).To(Device::CUDA);
+    Tensor<float> dst({2, 3}, Device::CUDA);
+    CopyInto(src, dst);
+    EXPECT_EQ(Values(dst), Values(src));
+}
+
+TEST(TensorCUDACopyInto, WritesIntoKVCacheSliceAndKeepsOldRows) {
+    Tensor<float> cache_cpu({2, 4, 2}, -1.0f);
+    Tensor<float> src_cpu = Iota<float>({2, 2, 2});
+    Tensor<float> cache = cache_cpu.To(Device::CUDA);
+
+    CopyInto(src_cpu.To(Device::CUDA), cache.Slice(1, 2, 2));
+    CopyInto(src_cpu, cache_cpu.Slice(1, 2, 2));
+
+    EXPECT_EQ(Values(cache), (std::vector<float>{-1, -1, -1, -1, 1, 2, 3, 4, -1, -1, -1, -1, 5, 6, 7, 8}));
+    EXPECT_EQ(Values(cache), Values(cache_cpu));
+}
+
+TEST(TensorCUDACopyInto, NonContiguousSourceIntoContiguousDestination) {
+    Tensor<float> cpu = Iota<float>({2, 3});
+    Tensor<float> dst({3, 2}, Device::CUDA);
+    CopyInto(cpu.To(Device::CUDA).Transpose(), dst);
+    EXPECT_EQ(Values(dst), Values(cpu.Transpose()));
+}
+
+TEST(TensorCUDACopyInto, IntoTransposedDestination) {
+    Tensor<float> src = Iota<float>({3, 2}).To(Device::CUDA);
+    Tensor<float> dst({2, 3}, Device::CUDA);
+    CopyInto(src, dst.Transpose());
+    EXPECT_EQ(Values(dst), (std::vector<float>{1, 3, 5, 2, 4, 6}));
+}
+
+TEST(TensorCUDACopyInto, ShapeMismatchThrows) {
+    Tensor<float> src({2, 3}, Device::CUDA);
+    Tensor<float> dst({3, 2}, Device::CUDA);
+    EXPECT_THROW(CopyInto(src, dst), std::invalid_argument);
+}
+
+TEST(TensorCUDACopyInto, MixedDevicesThrow) {
+    Tensor<float> gpu({2, 2}, Device::CUDA);
+    Tensor<float> cpu({2, 2}, 1.0f);
+    EXPECT_THROW(CopyInto(cpu, gpu), std::invalid_argument);
+    EXPECT_THROW(CopyInto(gpu, cpu), std::invalid_argument);
+}
+
+// --- strided copy launcher --------------------------------------------------
+
+TEST(StridedCopyLauncher, RankAboveMaxThrows) {
+    const std::vector<size_t> shape(9, 1), strides(9, 1);
+    EXPECT_THROW(cuda::LaunchStridedCopyDevice<float>(nullptr, nullptr, shape, strides, strides),
+                 std::invalid_argument);
+}
+
+TEST(StridedCopyLauncher, StrideRankMismatchThrows) {
+    const std::vector<size_t> shape{2, 3}, good{3, 1}, bad{1};
+    EXPECT_THROW(cuda::LaunchStridedCopyDevice<float>(nullptr, nullptr, shape, bad, good), std::invalid_argument);
+    EXPECT_THROW(cuda::LaunchStridedCopyDevice<float>(nullptr, nullptr, shape, good, bad), std::invalid_argument);
+}
+
+TEST(StridedCopyLauncher, ZeroElementsIsANoOp) {
+    const std::vector<size_t> shape{0, 3}, strides{3, 1};
+    EXPECT_NO_THROW(cuda::LaunchStridedCopyDevice<float>(nullptr, nullptr, shape, strides, strides));
 }
 
 // --- CPU-only operations ----------------------------------------------------
@@ -202,7 +350,6 @@ TEST(TensorCUDACPUOnly, ForEachBasedOperationsThrow) {
 
 TEST(TensorCUDACPUOnly, CopyingOperationsThrow) {
     Tensor<float> gpu({2, 2}, Device::CUDA);
-    EXPECT_THROW(gpu.Clone(), std::logic_error);
     EXPECT_THROW(gpu.Sqrt(), std::logic_error);
     EXPECT_THROW(gpu.Mean(0), std::logic_error);
     EXPECT_THROW(gpu * 2.0f, std::logic_error);
@@ -255,13 +402,6 @@ TEST(TensorCUDAMatMul, BatchedOperandThrows) {
     Tensor<float> a({2, 2, 3}, Device::CUDA);
     Tensor<float> b({3, 2}, Device::CUDA);
     EXPECT_THROW(MatMul(a, b), std::logic_error);
-}
-
-TEST(TensorCUDACPUOnly, CopyIntoThrows) {
-    Tensor<float> gpu({2, 2}, Device::CUDA);
-    Tensor<float> cpu({2, 2}, 1.0f);
-    EXPECT_THROW(CopyInto(gpu, cpu), std::logic_error);
-    EXPECT_THROW(CopyInto(cpu, gpu), std::logic_error);
 }
 
 TEST(TensorCUDACPUOnly, MaskedFillThrowsForCUDAMaskOrTensor) {

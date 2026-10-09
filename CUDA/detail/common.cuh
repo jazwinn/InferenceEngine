@@ -2,6 +2,7 @@
 
 #include <cuda_runtime.h>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
@@ -16,6 +17,7 @@
     } while (0)
 
 #define FOR_EACH_TYPE(X) X(float) X(double)
+#define FOR_EACH_ANY_TYPE(X) FOR_EACH_TYPE(X) X(bool) X(int) X(int64_t) X(size_t)
 
 
 namespace cuda{

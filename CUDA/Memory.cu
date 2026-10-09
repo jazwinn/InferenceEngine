@@ -1,4 +1,4 @@
-#include "CUDA/DeviceBuffer.h"
+#include "CUDA/Memory.h"
 #include "CUDA/detail/common.cuh"
 
 namespace cuda{

@@ -1,7 +1,7 @@
 #include <stdexcept>
 
 #include "CUDA/Kernel.cuh"
-#include "CUDA/DeviceBuffer.h"
+#include "CUDA/Memory.h"
 #include "CUDA/detail/common.cuh"
 
 #define INSTANTIATE_MATMUL(T) \

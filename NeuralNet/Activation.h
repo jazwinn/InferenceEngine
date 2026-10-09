@@ -18,6 +18,7 @@ namespace nn{
   class ReLU : public Module<T> {
   public:
     Tensor<T> Forward(const Tensor<T> &input) {
+      input.RequireCPU("ReLU");
       Tensor<T> output = input.Clone();
 
       std::for_each(output.Data(), output.Data() + output.Size(), [](T &value) {
@@ -36,6 +37,7 @@ namespace nn{
     Tensor<T> Forward(const Tensor<T> &input) {
       constexpr T ONE_OVER_SQRT_2 = T(0.7071067811865476);
 
+      input.RequireCPU("GELU");
       Tensor<T> output = input.Clone();
 
       std::for_each(output.Data(), output.Data() + output.Size(), [](T &x) {
@@ -53,6 +55,7 @@ namespace nn{
       constexpr T SQRT_2_OVER_PI = T(0.7978845608028654);
       constexpr T COEFFICIENT = T(0.044715);
 
+      input.RequireCPU("GELUTanh");
       Tensor<T> output = input.Clone();
 
       std::for_each(output.Data(), output.Data() + output.Size(), [](T &x) {
@@ -68,6 +71,7 @@ namespace nn{
   class Sigmoid : public Module<T> {
   public:
     Tensor<T> Forward(const Tensor<T> &input) {
+      input.RequireCPU("Sigmoid");
       Tensor<T> output = input.Clone();
 
       std::for_each(output.Data(), output.Data() + output.Size(),
@@ -81,6 +85,7 @@ namespace nn{
   class SiLU : public Module<T> {
   public:
     Tensor<T> Forward(const Tensor<T> &input) {
+      input.RequireCPU("SiLU");
       Tensor<T> output = input.Clone();
 
       std::for_each(output.Data(), output.Data() + output.Size(),
@@ -119,6 +124,7 @@ namespace nn{
   class Tanh : public Module<T> {
   public:
     Tensor<T> Forward(const Tensor<T> &input) {
+      input.RequireCPU("Tanh");
       Tensor<T> output = input.Clone();
 
       std::for_each(output.Data(), output.Data() + output.Size(),
@@ -135,6 +141,7 @@ namespace nn{
 
     Tensor<T> Forward(const Tensor<T> &input) {
       const size_t axis = tensor::detail::NormalizeAxis(m_axis, input.Rank());
+      input.RequireCPU("Softmax");
 
       // Clone() compacts, so the flat decomposition below holds for views.
       Tensor<T> output = input.Clone();

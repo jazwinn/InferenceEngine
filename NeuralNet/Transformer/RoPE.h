@@ -60,6 +60,7 @@ namespace nn::transformer{
                 throw std::out_of_range("RotaryEmbedding: positions exceed max_seq.");
             }
 
+            x.RequireCPU("RotaryEmbedding");
             const Tensor<T> src = x.Contiguous();
             Tensor<T> out(shape);
 

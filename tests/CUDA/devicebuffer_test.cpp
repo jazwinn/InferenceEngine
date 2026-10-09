@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <CUDA/DeviceBuffer.h>
+#include <CUDA/Memory.h>
 
 #include <numeric>
 #include <stdexcept>

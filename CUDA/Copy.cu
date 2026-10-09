@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <vector>
 
@@ -69,5 +70,5 @@ namespace cuda{
         CUDA_CHECK(cudaGetLastError());
     }
 
-    FOR_EACH_TYPE(INSTANTIATE_STRIDED_COPY)
+    FOR_EACH_ANY_TYPE(INSTANTIATE_STRIDED_COPY)
 }

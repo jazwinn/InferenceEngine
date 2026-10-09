@@ -60,6 +60,16 @@ namespace tensor::detail {
         cuda::LaunchLinearDevice(X.Data(), W.Data(), B.Size() ? B.Data() : nullptr, result.Data(), M, in, out);
         return result;
     }
+
+    template <typename T>
+    void CopyIntoCUDA(const Tensor<T>& src, Tensor<T> dst){
+            if(src.IsContiguous() && dst.IsContiguous()){
+                cuda::CopyDeviceToDevice(dst.Data(), src.Data(), src.Size() * sizeof(T));
+            }
+            else{
+                cuda::LaunchStridedCopyDevice(src.Data(), dst.Data(), dst.Shape(), src.Strides(), dst.Strides());
+            }
+    }
 }
 
 #endif

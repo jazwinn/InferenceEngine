@@ -150,11 +150,13 @@ namespace tensor {
         result_shape.push_back(rows);
         result_shape.push_back(cols);
 
-        if (A.IsCUDA()) {
+        
 #ifdef IE_ENABLE_CUDA
+        if (A.IsCUDA()) {
             return detail::MatMulCUDA(A, B, result_shape, rows, inner, cols);
-#endif
         }
+#endif
+        
 
         Tensor<T> result(result_shape);
 
@@ -208,22 +210,31 @@ namespace tensor {
     }
 
     template <typename T>
-    void CopyInto(Tensor<T> dst, const Tensor<T>& src)
+    void CopyInto(const Tensor<T>& src, Tensor<T> dst)
     {
+        if(dst.GetDevice() != src.GetDevice()){
+            throw std::invalid_argument("CopyInto: dst and src are not the same device.");
+        }
+
         if (dst.Shape() != src.Shape()) {
             throw std::invalid_argument("CopyInto: shape mismatch.");
         }
-        if (dst.Size() == 0) return;
-        dst.RequireCPU("CopyInto");
-        src.RequireCPU("CopyInto");
 
+        if (dst.Size() == 0) return;
+
+#ifdef IE_ENABLE_CUDA
+        if(dst.IsCUDA()){
+            detail::CopyIntoCUDA(src, dst);
+            return;
+        }
+#endif
+
+        T* dst_data       = dst.Data();
+        const T* src_data = src.Data();
         const size_t n = dst.Rank();
         const std::vector<size_t>& shape      = dst.Shape();
         const std::vector<size_t>& dst_stride = dst.Strides();
         const std::vector<size_t>& src_stride = src.Strides();
-
-        T* dst_data       = dst.Data();
-        const T* src_data = src.Data();
 
         std::vector<size_t> index(n, 0);
         size_t dst_offset = 0;
