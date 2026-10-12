@@ -7,7 +7,6 @@
 #include "Tensor/Tensor.h"
 #include "NeuralNet/Module.h"
 #include "NeuralNet/Linear.h"
-#include "NeuralNet/Activation.h"
 #include "NeuralNet/Transformer/TransformerConfig.h"
 
 namespace nn::transformer{
@@ -39,7 +38,7 @@ namespace nn::transformer{
 
         Tensor<T> Forward(const Tensor<T>& input){
             Tensor<T> h = up->Forward(input);
-            h = gate ? Activate(activation, gate->Forward(input)) * h : Activate(activation, h);
+            h = gate ? tensor::Activate(gate->Forward(input), activation) * h : tensor::Activate(h, activation);
             return down->Forward(h);
         }
 
@@ -49,18 +48,6 @@ namespace nn::transformer{
         std::shared_ptr<Linear<T>> gate;
 
     private:
-        static Tensor<T> Activate(Activation kind, const Tensor<T>& x)
-        {
-            switch (kind)
-            {
-            case Activation::GELUTanh: return nn::GELUTanh<T>().Forward(x);
-            case Activation::SiLU:     return nn::SiLU<T>().Forward(x);
-            case Activation::ReLU:     return nn::ReLU<T>().Forward(x);
-            case Activation::GELU:     return nn::GELU<T>().Forward(x);
-            }
-            throw std::invalid_argument("MLP: unsupported activation.");
-        }
-
         static size_t ValidatedSize(size_t value, const char* name)
         {
             if (value == 0)

@@ -7,11 +7,14 @@
 #include <vector>
 #include <algorithm>
 
+#include "Tensor/Activations.h"
+
 namespace nn::transformer::config
 {
+    using tensor::Activation;
+
     enum class NormType          { LayerNorm, RMSNorm };
     enum class NormPlacement     { Pre, Post };
-    enum class Activation        { GELU, GELUTanh, SiLU, ReLU };
     enum class MLPType           { Standard, Gated };          // Gated: down(act(gate(x)) * up(x))
     enum class PositionEncoding  { Learned, Rotary, None };
     enum class RopeScalingType   { Default, Linear, Dynamic, Yarn, Llama3, LongRope, MRope };

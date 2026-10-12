@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <NeuralNet/Activation.h>
 #include <NeuralNet/Transformer/MLP.h>
 
 #include <cmath>
