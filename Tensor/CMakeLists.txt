@@ -7,10 +7,14 @@ target_include_directories(tensor INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
 )
 
+file(GLOB_RECURSE TENSOR_HEADERS CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.h
+)
+
 target_sources(tensor INTERFACE
     FILE_SET HEADERS
     BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/..
-    FILES Tensor.h TensorCore.h Ops.h Activations.h detail/Shape.h detail/CudaOps.h
+    FILES ${TENSOR_HEADERS}
 )
 
 if(IE_ENABLE_CUDA)

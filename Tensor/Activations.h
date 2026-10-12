@@ -8,10 +8,10 @@
 
 #include "Tensor/TensorCore.h"
 #include "Tensor/detail/Shape.h"
+#include "Tensor/detail/CudaOps.h"
+#include "Tensor/ActivationType.h"
 
 namespace tensor {
-
-    enum class Activation { GELU, GELUTanh, SiLU, ReLU, Sigmoid, Tanh };
 
     namespace detail {
 
@@ -34,7 +34,12 @@ namespace tensor {
 
     template <typename T>
     Tensor<T> Activate(const Tensor<T>& input, Activation kind) {
-        input.RequireCPU("Activate");
+
+#ifdef IE_ENABLE_CUDA
+        if(input.IsCUDA()){
+            return detail::ActivationCUDA(input.Contiguous(), kind);
+        }
+#endif
 
         switch (kind) {
         case Activation::ReLU:

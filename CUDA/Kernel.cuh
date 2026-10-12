@@ -6,6 +6,8 @@
 
 namespace cuda{
 
+    enum class Activation { GELU, GELUTanh, SiLU, ReLU, Sigmoid, Tanh };
+
     template <typename T>
     void LaunchMatMul(const DeviceBuffer<T>& dA, const DeviceBuffer<T>& dB, DeviceBuffer<T>& dC, size_t M, size_t N, size_t K);
 
@@ -29,5 +31,8 @@ namespace cuda{
                                  const std::vector<size_t>& shape,
                                  const std::vector<size_t>& src_stride,
                                  const std::vector<size_t>& dst_stride);
+
+    template <typename T>
+    void LaunchActivationDevice(const T* in, T* out, size_t size, Activation act);
 
 }

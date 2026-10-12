@@ -7,9 +7,22 @@
 #include <vector>
 
 #include "Tensor/TensorCore.h"
+#include "Tensor/ActivationType.h"
 #include "CUDA/Kernel.cuh"
 
 namespace tensor::detail {
+
+    inline cuda::Activation ActivationToCuda(Activation kind) {
+        switch (kind) {
+        case Activation::ReLU:     return cuda::Activation::ReLU;
+        case Activation::GELU:     return cuda::Activation::GELU;
+        case Activation::GELUTanh: return cuda::Activation::GELUTanh;
+        case Activation::Sigmoid:  return cuda::Activation::Sigmoid;
+        case Activation::SiLU:     return cuda::Activation::SiLU;
+        case Activation::Tanh:     return cuda::Activation::Tanh;
+        }
+        throw std::invalid_argument("ToCuda: unsupported activation.");
+    }
 
     template <typename T>
     Tensor<T> MatMulCUDA(const Tensor<T>& A, const Tensor<T>& B,
@@ -70,6 +83,23 @@ namespace tensor::detail {
                 cuda::LaunchStridedCopyDevice(src.Data(), dst.Data(), dst.Shape(), src.Strides(), dst.Strides());
             }
     }
+
+    template <typename T>
+    Tensor<T> ActivationCUDA(const Tensor<T>& X, Activation act){
+        if(!X.IsCUDA()){
+            throw std::invalid_argument("Activation (CUDA): Tensor is of different device");
+        }
+        if(!X.IsContiguous()){
+            throw std::logic_error("Activation (CUDA): operand must be contiguous.");
+        }
+
+        Tensor<T> result(X.Shape(), Device::CUDA);
+        cuda::LaunchActivationDevice(X.Data(), result.Data(), X.Size(), ActivationToCuda(act));
+
+        return result;
+    }
+
+
 }
 
 #endif

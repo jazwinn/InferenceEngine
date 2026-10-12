@@ -7,7 +7,7 @@
 #include <vector>
 #include <algorithm>
 
-#include "Tensor/Activations.h"
+#include "Tensor/ActivationType.h"
 
 namespace nn::transformer::config
 {
