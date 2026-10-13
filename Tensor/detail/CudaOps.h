@@ -100,6 +100,23 @@ namespace tensor::detail {
     }
 
 
+    template <typename T>
+    Tensor<T> BinaryCUDA(const Tensor<T>& A, const Tensor<T>& B, cuda::BinaryOp ops){
+        if(!A.IsCUDA() || !B.IsCUDA()){
+            throw std::invalid_argument("Binary (CUDA): Tensor is of different device"); 
+        }
+        if(A.Shape() != B.Shape()){
+            throw std::invalid_argument("Binary (CUDA): Tensor is of different shape"); 
+        }
+        if(!A.IsContiguous() || !B.IsContiguous()){
+            throw std::logic_error("Binary (CUDA): operand must be contiguous.");
+        }
+        Tensor<T> result(A.Shape(), Device::CUDA);
+        cuda::LaunchBinaryDevice(A.Data(), B.Data(), result.Data(), A.Size(), ops);
+        return result;
+    }
+
+
 }
 
 #endif

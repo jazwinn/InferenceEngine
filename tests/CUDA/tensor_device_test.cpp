@@ -343,8 +343,6 @@ TEST(TensorCUDACPUOnly, ForEachBasedOperationsThrow) {
     Tensor<float> gpu({2, 2}, Device::CUDA);
     EXPECT_THROW(gpu.Fill(1.0f), std::logic_error);
     EXPECT_THROW(gpu.RandomFill(), std::logic_error);
-    EXPECT_THROW(gpu += 1.0f, std::logic_error);
-    EXPECT_THROW(gpu *= 2.0f, std::logic_error);
     EXPECT_THROW(gpu.Mean(), std::logic_error);
 }
 
@@ -352,7 +350,6 @@ TEST(TensorCUDACPUOnly, CopyingOperationsThrow) {
     Tensor<float> gpu({2, 2}, Device::CUDA);
     EXPECT_THROW(gpu.Sqrt(), std::logic_error);
     EXPECT_THROW(gpu.Mean(0), std::logic_error);
-    EXPECT_THROW(gpu * 2.0f, std::logic_error);
 }
 
 TEST(TensorCUDACPUOnly, BinaryOperationsThrowForEitherSide) {

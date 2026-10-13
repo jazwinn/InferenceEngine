@@ -11,8 +11,6 @@
 
 namespace cuda{
 
-    constexpr int kMaxRank = 8;
-
     struct StridedLayout{
         size_t shape[kMaxRank];
         size_t src_stride[kMaxRank];

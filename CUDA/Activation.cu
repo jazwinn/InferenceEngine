@@ -5,7 +5,7 @@
 #include "CUDA/detail/common.cuh"
 
 #define INSTANTIATE_ACTIVATION(T) \
-    template void LaunchActivationDevice<T>(const T* in, T* out, size_t size, Activation act); \
+    template void LaunchActivationDevice<T>(const T* in, T* out, size_t size, Activation act);
 
 namespace cuda{
 
@@ -101,5 +101,5 @@ namespace cuda{
         CUDA_CHECK(cudaGetLastError());
     }
 
-    FOR_EACH_TYPE(INSTANTIATE_ACTIVATION);
+    FOR_EACH_TYPE(INSTANTIATE_ACTIVATION)
 }

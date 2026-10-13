@@ -22,6 +22,8 @@
 
 namespace cuda{
 
+    constexpr int kMaxRank = 8;
+
     __host__ __device__ constexpr size_t CeilDiv(size_t a, size_t b) { 
         return (a + b - 1) / b; 
     }

@@ -351,16 +351,49 @@ namespace tensor {
         }
 
         Tensor<T>& operator+=(const T& scalar) {
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA())
+            {
+                if (!IsContiguous()) {
+                    throw std::logic_error("operator+= (CUDA): tensor must be contiguous.");
+                }
+                cuda::LaunchScalarDevice(Data(), Data(), scalar, Size(), cuda::BinaryOp::Add);
+                return *this;
+            }
+            
+#endif
             ForEach([&scalar](T& element) { element += scalar; });
             return *this;
         }
 
         Tensor<T>& operator-=(const T& scalar) {
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA())
+            {
+                if (!IsContiguous()) {
+                    throw std::logic_error("operator-= (CUDA): tensor must be contiguous.");
+                }
+                cuda::LaunchScalarDevice(Data(), Data(), scalar, Size(), cuda::BinaryOp::Sub);
+                return *this;
+            }
+            
+#endif
             ForEach([&scalar](T& element) { element -= scalar; });
             return *this;
         }
 
         Tensor<T>& operator*=(const T& scalar) {
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA())
+            {
+                if (!IsContiguous()) {
+                    throw std::logic_error("operator*= (CUDA): tensor must be contiguous.");
+                }
+                cuda::LaunchScalarDevice(Data(), Data(), scalar, Size(), cuda::BinaryOp::Mul);
+                return *this;
+            }
+            
+#endif
             ForEach([&scalar](T& element) { element *= scalar; });
             return *this;
         }
@@ -369,6 +402,17 @@ namespace tensor {
             if (scalar == T(0)) {
                 throw std::invalid_argument("Division by zero.");
             }
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA())
+            {
+                if (!IsContiguous()) {
+                    throw std::logic_error("operator/= (CUDA): tensor must be contiguous.");
+                }
+                cuda::LaunchScalarDevice(Data(), Data(), scalar, Size(), cuda::BinaryOp::Div);
+                return *this;
+            }
+
+#endif
             ForEach([&scalar](T& element) { element /= scalar; });
             return *this;
         }

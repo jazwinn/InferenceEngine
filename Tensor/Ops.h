@@ -50,21 +50,41 @@ namespace tensor {
 
     template <typename T >
     Tensor<T> operator+(const Tensor<T>& lhs, const Tensor<T>& rhs) {
+#ifdef IE_ENABLE_CUDA
+        if (lhs.IsCUDA() || rhs.IsCUDA()) {
+            return detail::BinaryCUDA(lhs, rhs, cuda::BinaryOp::Add);
+        }
+#endif
         return Zip(lhs, rhs, [](T a, T b) { return a + b; });
     }
 
     template <typename T >
     Tensor<T> operator-(const Tensor<T>& lhs, const Tensor<T>& rhs) {
+#ifdef IE_ENABLE_CUDA
+        if (lhs.IsCUDA() || rhs.IsCUDA()) {
+            return detail::BinaryCUDA(lhs, rhs, cuda::BinaryOp::Sub);
+        }
+#endif
         return Zip(lhs, rhs, [](T a, T b) { return a - b; });
     }
 
     template <typename T >
     Tensor<T> operator*(const Tensor<T>& lhs, const Tensor<T>& rhs) {
+#ifdef IE_ENABLE_CUDA
+        if (lhs.IsCUDA() || rhs.IsCUDA()) {
+            return detail::BinaryCUDA(lhs, rhs, cuda::BinaryOp::Mul);
+        }
+#endif
         return Zip(lhs, rhs, [](T a, T b) { return a * b; });
     }
 
     template <typename T >
     Tensor<T> operator/(const Tensor<T>& lhs, const Tensor<T>& rhs) {
+#ifdef IE_ENABLE_CUDA
+        if (lhs.IsCUDA() || rhs.IsCUDA()) {
+            return detail::BinaryCUDA(lhs, rhs, cuda::BinaryOp::Div);
+        }
+#endif
         return Zip(lhs, rhs, [](T a, T b) {
             if (b == T(0)) {
                 throw std::invalid_argument("Division by zero in tensor.");
