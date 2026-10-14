@@ -8,6 +8,7 @@
 
 #include "Tensor/TensorCore.h"
 #include "Tensor/ActivationType.h"
+#include "Tensor/detail/Shape.h"
 #include "CUDA/Kernel.cuh"
 
 namespace tensor::detail {
@@ -101,20 +102,26 @@ namespace tensor::detail {
 
 
     template <typename T>
-    Tensor<T> BinaryCUDA(const Tensor<T>& A, const Tensor<T>& B, cuda::BinaryOp ops){
+    Tensor<T> BinaryCUDA(const Tensor<T>& A, const Tensor<T>& B, cuda::BinaryOp op){
         if(!A.IsCUDA() || !B.IsCUDA()){
             throw std::invalid_argument("Binary (CUDA): Tensor is of different device"); 
         }
-        if(A.Shape() != B.Shape()){
-            throw std::invalid_argument("Binary (CUDA): Tensor is of different shape"); 
+        if(A.Shape() == B.Shape() && A.IsContiguous() && B.IsContiguous()){
+            Tensor<T> result(A.Shape(), Device::CUDA);
+            cuda::LaunchBinaryDevice(A.Data(), B.Data(), result.Data(), A.Size(), op);
+            return result;
         }
-        if(!A.IsContiguous() || !B.IsContiguous()){
-            throw std::logic_error("Binary (CUDA): operand must be contiguous.");
-        }
-        Tensor<T> result(A.Shape(), Device::CUDA);
-        cuda::LaunchBinaryDevice(A.Data(), B.Data(), result.Data(), A.Size(), ops);
+
+        const std::vector<size_t> shape = BroadcastShape(A.Shape(), B.Shape());
+        Tensor<T> result(shape, Device::CUDA);
+        cuda::LaunchStridedBinaryDevice(A.Data(), B.Data(), result.Data(), shape,
+                                        BroadcastStrides(A.Shape(), A.Strides(), shape),
+                                        BroadcastStrides(B.Shape(), B.Strides(), shape),
+                                        result.Strides(), op);
         return result;
     }
+
+    
 
 
 }

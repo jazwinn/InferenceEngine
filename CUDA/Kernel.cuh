@@ -42,4 +42,12 @@ namespace cuda{
     template <typename T>
     void LaunchBinaryDevice(const T* A, const T* B, T* out, size_t size, BinaryOp op);
 
+    template <typename T>
+    void LaunchStridedBinaryDevice(const T* A, const T* B, T* out,
+                                   const std::vector<size_t>& shape,
+                                   const std::vector<size_t>& a_stride,
+                                   const std::vector<size_t>& b_stride,
+                                   const std::vector<size_t>& out_stride,
+                                   BinaryOp op);
+
 }

@@ -330,18 +330,30 @@ namespace tensor {
 
 
         Tensor<T>& operator+=(const Tensor<T>& other) {
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA() || other.IsCUDA()) return BroadcastOpIntoCUDA(other, cuda::BinaryOp::Add);
+#endif
             return BroadcastInto(other, [](T& a, T b) { a += b; });
         }
 
         Tensor<T>& operator-=(const Tensor<T>& other) {
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA() || other.IsCUDA()) return BroadcastOpIntoCUDA(other, cuda::BinaryOp::Sub);
+#endif
             return BroadcastInto(other, [](T& a, T b) { a -= b; });
         }
 
         Tensor<T>& operator*=(const Tensor<T>& other) {
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA() || other.IsCUDA()) return BroadcastOpIntoCUDA(other, cuda::BinaryOp::Mul);
+#endif
             return BroadcastInto(other, [](T& a, T b) { a *= b; });
         }
 
         Tensor<T>& operator/=(const Tensor<T>& other) {
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA() || other.IsCUDA()) return BroadcastOpIntoCUDA(other, cuda::BinaryOp::Div);
+#endif
             return BroadcastInto(other, [](T& a, T b) {
                 if (b == T(0)) {
                     throw std::invalid_argument("Division by zero in tensor.");
@@ -653,6 +665,34 @@ namespace tensor {
             return axes;
         }
 
+#ifdef IE_ENABLE_CUDA
+        Tensor<T>& BroadcastOpIntoCUDA(const Tensor<T>& other, cuda::BinaryOp op) {
+            if (!IsCUDA() || !other.IsCUDA()) {
+                throw std::invalid_argument("In-place operator (CUDA): tensors on different devices.");
+            }
+            if (detail::BroadcastShape(m_shape, other.m_shape) != m_shape) {
+                throw std::invalid_argument("In-place operation would change the tensor shape.");
+            }
+            if (Size() == 0 || other.Size() == 0) return *this;
+
+            const Tensor<T> src = MustCopyBeforeInPlace(other) ? other.Clone() : other;
+
+            cuda::LaunchStridedBinaryDevice(Data(), src.Data(), Data(), m_shape, m_stride,
+                                            detail::BroadcastStrides(src.m_shape, src.m_stride, m_shape),
+                                            m_stride, op);
+            return *this;
+        }
+#endif
+
+        bool MustCopyBeforeInPlace(const Tensor<T>& other) const {
+            if (!SharesStorage(other)) {
+                return false;
+            }
+            const std::vector<size_t> other_stride =
+                detail::BroadcastStrides(other.m_shape, other.m_stride, m_shape);
+            return other.m_offset != m_offset || other_stride != m_stride;
+        }
+
         template <typename Op>
         Tensor<T>& BroadcastInto(const Tensor<T>& other, Op op) {
             if (detail::BroadcastShape(m_shape, other.m_shape) != m_shape) {
@@ -664,16 +704,18 @@ namespace tensor {
             RequireCPU("In-place operator");
             other.RequireCPU("In-place operator");
 
+            const Tensor<T> src = MustCopyBeforeInPlace(other) ? other.Clone() : other;
+
             const std::vector<size_t> other_stride =
-                detail::BroadcastStrides(other.m_shape, other.m_stride, m_shape);
+                detail::BroadcastStrides(src.m_shape, src.m_stride, m_shape);
             const size_t n = m_shape.size();
 
             std::vector<size_t> index(n, 0);
             size_t self_offset = m_offset;
-            size_t other_offset = other.m_offset;
+            size_t other_offset = src.m_offset;
 
             for (size_t i = 0; i < m_size; ++i) {
-                op(m_data[self_offset], other.m_data[other_offset]);
+                op(m_data[self_offset], src.m_data[other_offset]);
 
                 for (size_t axis = n; axis-- > 0; ) {
                     ++index[axis];

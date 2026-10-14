@@ -244,16 +244,10 @@ TEST(BinaryAddCUDA, MixedDevicesThrow) {
     EXPECT_THROW(cpu + gpu, std::invalid_argument);
 }
 
-TEST(BinaryAddCUDA, BroadcastShapesNotSupportedYet) {
+TEST(BinaryAddCUDA, IncompatibleShapesThrow) {
     Tensor<float> a({2, 3}, Device::CUDA);
-    Tensor<float> b({3}, Device::CUDA);
+    Tensor<float> b({4}, Device::CUDA);
     EXPECT_THROW(a + b, std::invalid_argument);
-}
-
-TEST(BinaryAddCUDA, NonContiguousOperandNotSupportedYet) {
-    Tensor<float> a({3, 2}, Device::CUDA);
-    Tensor<float> b({2, 3}, Device::CUDA);
-    EXPECT_THROW(a + b.Transpose(), std::logic_error);
 }
 
 TEST(BinaryOperatorsCUDA, SubMulDivMatchCPU) {
@@ -327,12 +321,203 @@ TEST(BinaryOperatorsCUDA, MixedDevicesThrowForEveryOperator) {
     EXPECT_THROW(cpu / gpu, std::invalid_argument);
 }
 
-TEST(BinaryOperatorsCUDA, BroadcastShapesNotSupportedYetForEveryOperator) {
-    Tensor<float> a({2, 3}, Device::CUDA);
-    Tensor<float> b({3}, 1.0f, Device::CUDA);
-    EXPECT_THROW(a - b, std::invalid_argument);
-    EXPECT_THROW(a * b, std::invalid_argument);
-    EXPECT_THROW(a / b, std::invalid_argument);
+// --- broadcasting --------------------------------------------------------------
+
+namespace {
+
+void ExpectAllOpsMatchCPU(const Tensor<float>& a, const Tensor<float>& b) {
+    Tensor<float> ga = a.To(Device::CUDA);
+    Tensor<float> gb = b.To(Device::CUDA);
+    ExpectNear(ga + gb, a + b, 0.0f);
+    ExpectNear(ga - gb, a - b, 0.0f);
+    ExpectNear(ga * gb, a * b, 0.0f);
+    ExpectNear(ga / gb, a / b, 1e-6f);
+    ExpectNear(gb + ga, b + a, 0.0f);
+    ExpectNear(gb - ga, b - a, 0.0f);
+}
+
+Tensor<float> NonZero(const std::vector<size_t>& shape) {
+    return Ramp<float>(shape) * 0.5f + 7.0f;
+}
+
+}
+
+TEST(BroadcastCUDA, RowVectorAcrossMatrix) {
+    ExpectAllOpsMatchCPU(Ramp<float>({2, 3}), NonZero({3}));
+}
+
+TEST(BroadcastCUDA, ColumnVectorAcrossMatrix) {
+    ExpectAllOpsMatchCPU(Ramp<float>({2, 3}), NonZero({2, 1}));
+}
+
+TEST(BroadcastCUDA, BothSidesGrow) {
+    Tensor<float> a = Ramp<float>({2, 1, 4});
+    Tensor<float> b = NonZero({3, 1});
+    Tensor<float> sum = a.To(Device::CUDA) + b.To(Device::CUDA);
+    EXPECT_EQ(sum.Shape(), (std::vector<size_t>{2, 3, 4}));
+    ExpectAllOpsMatchCPU(a, b);
+}
+
+TEST(BroadcastCUDA, SingleElementOperand) {
+    ExpectAllOpsMatchCPU(Ramp<float>({4}), NonZero({1}));
+    ExpectAllOpsMatchCPU(Ramp<float>({3, 4}), NonZero({1, 1}));
+}
+
+TEST(BroadcastCUDA, BiasAcrossSequence) {
+    ExpectAllOpsMatchCPU(Ramp<float>({2, 5, 8}), NonZero({8}));
+}
+
+TEST(BroadcastCUDA, DoubleAndInt) {
+    Tensor<double> a = Ramp<double>({3, 4});
+    Tensor<double> b = Ramp<double>({4}) + 9.0;
+    ExpectNear(a.To(Device::CUDA) * b.To(Device::CUDA), a * b, 1e-12);
+
+    Tensor<int> ia({2, 3});
+    Tensor<int> ib({3});
+    for (size_t i = 0; i < ia.Size(); ++i) ia.Data()[i] = static_cast<int>(i) * 5 - 4;
+    for (size_t i = 0; i < ib.Size(); ++i) ib.Data()[i] = static_cast<int>(i) + 1;
+    EXPECT_EQ(Values(ia.To(Device::CUDA) / ib.To(Device::CUDA)), Values(ia / ib));
+}
+
+TEST(BroadcastCUDA, TransposedOperand) {
+    Tensor<float> a = Ramp<float>({3, 2});
+    Tensor<float> b = NonZero({2, 3});
+    ExpectAllOpsMatchCPU(a, b.Transpose());
+    ExpectNear(a.To(Device::CUDA) + b.To(Device::CUDA).Transpose(), a + b.Transpose(), 0.0f);
+}
+
+TEST(BroadcastCUDA, SlicedOperands) {
+    Tensor<float> big = Ramp<float>({4, 6});
+    Tensor<float> gbig = big.To(Device::CUDA);
+    ExpectNear(gbig.Slice(1, 1, 3) * gbig.Slice(1, 3, 3), big.Slice(1, 1, 3) * big.Slice(1, 3, 3), 0.0f);
+}
+
+TEST(BroadcastCUDA, BothOperandsNonContiguousWithBroadcast) {
+    Tensor<float> a = Ramp<float>({4, 3});
+    Tensor<float> b = NonZero({1, 4});
+    Tensor<float> ga = a.To(Device::CUDA);
+    Tensor<float> gb = b.To(Device::CUDA);
+    ExpectNear(ga.Transpose() + gb, a.Transpose() + b, 0.0f);
+}
+
+// --- in-place tensor operators ---------------------------------------------------
+
+TEST(InPlaceTensorCUDA, BiasAddMatchesCPU) {
+    Tensor<float> x = Ramp<float>({2, 5, 8});
+    Tensor<float> bias = NonZero({8});
+    Tensor<float> gx = x.To(Device::CUDA);
+    gx += bias.To(Device::CUDA);
+    x += bias;
+    EXPECT_TRUE(gx.IsCUDA());
+    ExpectNear(gx, x, 0.0f);
+}
+
+TEST(InPlaceTensorCUDA, EveryOperatorMatchesCPU) {
+    Tensor<float> b = NonZero({3});
+    Tensor<float> gb = b.To(Device::CUDA);
+
+    Tensor<float> x = Ramp<float>({2, 3});
+    Tensor<float> gx = x.To(Device::CUDA);
+    gx += gb; x += b;
+    gx -= gb * 0.5f; x -= b * 0.5f;
+    gx *= gb; x *= b;
+    gx /= gb; x /= b;
+    ExpectNear(gx, x, 1e-5f);
+}
+
+TEST(InPlaceTensorCUDA, GammaScaleMatchesCPU) {
+    Tensor<float> x = Ramp<float>({4, 6});
+    Tensor<float> gamma = NonZero({6});
+    Tensor<float> gx = x.To(Device::CUDA);
+    gx *= gamma.To(Device::CUDA);
+    x *= gamma;
+    ExpectNear(gx, x, 0.0f);
+}
+
+TEST(InPlaceTensorCUDA, WritesIntoSliceAndLeavesOtherRowsUntouched) {
+    Tensor<float> cache = Ramp<float>({2, 4, 3});
+    Tensor<float> update = NonZero({2, 2, 3});
+    Tensor<float> gcache = cache.To(Device::CUDA);
+
+    Tensor<float> gslice = gcache.Slice(1, 1, 2);
+    gslice += update.To(Device::CUDA);
+    Tensor<float> slice = cache.Slice(1, 1, 2);
+    slice += update;
+
+    ExpectNear(gcache, cache, 0.0f);
+}
+
+TEST(InPlaceTensorCUDA, ReturnsSelf) {
+    Tensor<float> gx({2, 2}, Device::CUDA);
+    Tensor<float> gb({2}, Device::CUDA);
+    EXPECT_EQ(&(gx += gb), &gx);
+}
+
+TEST(InPlaceTensorCUDA, ShapeGrowingThrows) {
+    Tensor<float> bias({3}, Device::CUDA);
+    Tensor<float> x({2, 3}, Device::CUDA);
+    EXPECT_THROW(bias += x, std::invalid_argument);
+}
+
+TEST(InPlaceTensorCUDA, MixedDevicesThrow) {
+    Tensor<float> gpu({2, 2}, Device::CUDA);
+    Tensor<float> cpu({2, 2}, 1.0f);
+    EXPECT_THROW(gpu += cpu, std::invalid_argument);
+    EXPECT_THROW(cpu += gpu, std::invalid_argument);
+    EXPECT_THROW(gpu *= cpu, std::invalid_argument);
+    EXPECT_THROW(cpu /= gpu, std::invalid_argument);
+}
+
+TEST(InPlaceTensorCUDA, CPUInPlaceStillWorksInCUDABuild) {
+    Tensor<float> x({2, 3}, 1.0f);
+    Tensor<float> b({3}, 2.0f);
+    x += b;
+    x *= b;
+    EXPECT_EQ(Values(x), std::vector<float>(6, 6.0f));
+}
+
+// --- overlapping memory ----------------------------------------------------------
+
+TEST(OverlapCUDA, AddTransposeOfItself) {
+    Tensor<float> a = Ramp<float>({5, 5});
+    const Tensor<float> expected = a + a.Transpose();
+    Tensor<float> ga = a.To(Device::CUDA);
+    ga += ga.Transpose();
+    ExpectNear(ga, expected, 0.0f);
+}
+
+TEST(OverlapCUDA, AddItselfDoubles) {
+    Tensor<float> a = Ramp<float>({3, 4});
+    Tensor<float> ga = a.To(Device::CUDA);
+    ga += ga;
+    ExpectNear(ga, a * 2.0f, 0.0f);
+}
+
+TEST(OverlapCUDA, BroadcastOwnFirstRow) {
+    Tensor<float> a = Ramp<float>({4, 3});
+    const Tensor<float> expected = a * a.Row(0);
+    Tensor<float> ga = a.To(Device::CUDA);
+    ga *= ga.Row(0);
+    ExpectNear(ga, expected, 0.0f);
+}
+
+TEST(OverlapCUDA, ShiftedSliceOfSameBuffer) {
+    Tensor<float> a = Ramp<float>({6, 2});
+    const Tensor<float> expected = a.Slice(0, 0, 5) + a.Slice(0, 1, 5);
+    Tensor<float> ga = a.To(Device::CUDA);
+    Tensor<float> head = ga.Slice(0, 0, 5);
+    head += ga.Slice(0, 1, 5);
+    ExpectNear(head, expected, 0.0f);
+}
+
+TEST(OverlapCUDA, DisjointSlicesOfSameBuffer) {
+    Tensor<float> a = Ramp<float>({4, 3});
+    const Tensor<float> expected = a.Slice(0, 0, 2) - a.Slice(0, 2, 2);
+    Tensor<float> ga = a.To(Device::CUDA);
+    Tensor<float> top = ga.Slice(0, 0, 2);
+    top -= ga.Slice(0, 2, 2);
+    ExpectNear(top, expected, 0.0f);
+    ExpectNear(ga.Slice(0, 2, 2), a.Slice(0, 2, 2), 0.0f);
 }
 
 // --- binary launcher -----------------------------------------------------------

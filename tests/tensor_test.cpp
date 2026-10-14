@@ -2558,3 +2558,49 @@ TEST(TensorDevice, ConstructOnCUDAThrowsWithoutCUDA) {
     EXPECT_THROW(Tensor<float>({2, 3}, Device::CUDA), std::logic_error);
 }
 #endif
+
+// --- in-place with overlapping memory ----------------------------------------
+
+namespace {
+
+Tensor<float> OverlapRamp(const std::vector<size_t>& shape) {
+    Tensor<float> t(shape);
+    for (size_t i = 0; i < t.Size(); ++i) t.Data()[i] = static_cast<float>(i) * 0.5f - 3.0f;
+    return t;
+}
+
+std::vector<float> Flat(const Tensor<float>& t) {
+    const Tensor<float> c = t.Contiguous();
+    return std::vector<float>(c.Data(), c.Data() + c.Size());
+}
+
+}
+
+TEST(TensorInPlaceOverlap, AddTransposeOfItself) {
+    Tensor<float> a = OverlapRamp({5, 5});
+    const Tensor<float> expected = a + a.Transpose();
+    a += a.Transpose();
+    EXPECT_EQ(Flat(a), Flat(expected));
+}
+
+TEST(TensorInPlaceOverlap, AddItselfDoubles) {
+    Tensor<float> a = OverlapRamp({3, 4});
+    const Tensor<float> expected = a * 2.0f;
+    a += a;
+    EXPECT_EQ(Flat(a), Flat(expected));
+}
+
+TEST(TensorInPlaceOverlap, BroadcastOwnFirstRow) {
+    Tensor<float> a = OverlapRamp({4, 3});
+    const Tensor<float> expected = a * a.Row(0);
+    a *= a.Row(0);
+    EXPECT_EQ(Flat(a), Flat(expected));
+}
+
+TEST(TensorInPlaceOverlap, ShiftedSliceOfSameBuffer) {
+    Tensor<float> a = OverlapRamp({6, 2});
+    const Tensor<float> expected = a.Slice(0, 1, 5) + a.Slice(0, 0, 5);
+    Tensor<float> tail = a.Slice(0, 1, 5);
+    tail += a.Slice(0, 0, 5);
+    EXPECT_EQ(Flat(tail), Flat(expected));
+}
