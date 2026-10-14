@@ -8,6 +8,7 @@ namespace cuda{
 
     enum class Activation { GELU, GELUTanh, SiLU, ReLU, Sigmoid, Tanh };
     enum class BinaryOp { Add, Sub, Mul, Div };
+    enum class UnaryOp { Sqrt };
 
     template <typename T>
     void LaunchMatMul(const DeviceBuffer<T>& dA, const DeviceBuffer<T>& dB, DeviceBuffer<T>& dC, size_t M, size_t N, size_t K);
@@ -35,6 +36,9 @@ namespace cuda{
 
     template <typename T>
     void LaunchActivationDevice(const T* in, T* out, size_t size, Activation act);
+
+    template <typename T>
+    void LaunchUnaryDevice(const T* in, T* out, size_t size, UnaryOp op);
 
     template <typename T>
     void LaunchScalarDevice(const T* in, T* out, T scalar, size_t size, BinaryOp op);

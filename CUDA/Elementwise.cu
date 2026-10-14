@@ -74,6 +74,37 @@ namespace cuda{
     }
 
     template <typename T>
+    struct SqrtOp{__device__ T operator()(T x)const{return sqrt(x);}};
+
+    template <typename T, typename Op>
+    __global__ void UnaryKernel(const T* in, T* out, size_t size, Op op){
+        size_t i = blockDim.x * blockIdx.x + threadIdx.x;
+
+        if(i < size){
+            out[i] = op(in[i]);
+        }
+    }
+
+    template <typename T>
+    void LaunchUnaryDevice(const T* in, T* out, size_t size, UnaryOp op){
+        if (size == 0) return;
+
+        constexpr size_t threads = 256;
+        const size_t blocks = CeilDiv(size, threads);
+
+        switch (op)
+        {
+        case UnaryOp::Sqrt:
+            UnaryKernel<<<blocks, threads>>>(in, out, size, SqrtOp<T>{});
+            break;
+        default:
+            throw std::invalid_argument("LaunchUnaryDevice: unsupported op.");
+        }
+
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
     void LaunchScalarDevice(const T* in, T* out, T scalar, size_t size, BinaryOp op){
         if (size == 0) return;
 
@@ -186,5 +217,8 @@ namespace cuda{
     INSTANTIATE_OPS(float)
     INSTANTIATE_OPS(double)
     INSTANTIATE_OPS(int)
+
+    template void LaunchUnaryDevice<float>(const float*, float*, size_t, UnaryOp);
+    template void LaunchUnaryDevice<double>(const double*, double*, size_t, UnaryOp);
 
 }

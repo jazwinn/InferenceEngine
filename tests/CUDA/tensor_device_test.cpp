@@ -348,7 +348,6 @@ TEST(TensorCUDACPUOnly, ForEachBasedOperationsThrow) {
 
 TEST(TensorCUDACPUOnly, CopyingOperationsThrow) {
     Tensor<float> gpu({2, 2}, Device::CUDA);
-    EXPECT_THROW(gpu.Sqrt(), std::logic_error);
     EXPECT_THROW(gpu.Mean(0), std::logic_error);
 }
 

@@ -551,3 +551,87 @@ TEST(BinaryLauncher, WorksInPlace) {
     cuda::LaunchBinaryDevice(ga.Data(), gb.Data(), ga.Data(), ga.Size(), cuda::BinaryOp::Add);
     ExpectNear(ga, a + b, 0.0f);
 }
+
+// --- sqrt ----------------------------------------------------------------------
+
+namespace {
+
+template <typename T>
+Tensor<T> PositiveRamp(const std::vector<size_t>& shape) {
+    Tensor<T> t(shape);
+    T* data = t.Data();
+    for (size_t i = 0; i < t.Size(); ++i) {
+        data[i] = T(i % 17) * T(0.75) + T(0.25);
+    }
+    return t;
+}
+
+}
+
+TEST(SqrtCUDA, MatchesCPU) {
+    auto cpu = PositiveRamp<float>({3, 5});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    Tensor<float> out = gpu.Sqrt();
+    EXPECT_TRUE(out.IsCUDA());
+    ExpectNear(out, cpu.Sqrt(), 1e-6f);
+}
+
+TEST(SqrtCUDA, MatchesCPUForDouble) {
+    auto cpu = PositiveRamp<double>({4, 7});
+    Tensor<double> gpu = cpu.To(Device::CUDA);
+    ExpectNear(gpu.Sqrt(), cpu.Sqrt(), 1e-12);
+}
+
+TEST(SqrtCUDA, LargeTensorSpansManyBlocks) {
+    auto cpu = PositiveRamp<float>({1000, 3});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    ExpectNear(gpu.Sqrt(), cpu.Sqrt(), 1e-6f);
+}
+
+TEST(SqrtCUDA, DoesNotMutateOrAliasTheSource) {
+    auto cpu = PositiveRamp<float>({2, 3});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    Tensor<float> out = gpu.Sqrt();
+    EXPECT_FALSE(out.SharesStorage(gpu));
+    ExpectNear(gpu, cpu, 0.0f);
+}
+
+TEST(SqrtCUDA, HandlesANonContiguousSource) {
+    auto cpu = PositiveRamp<float>({3, 4});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    Tensor<float> t = gpu.Transpose();
+    ASSERT_FALSE(t.IsContiguous());
+    ExpectNear(t.Sqrt(), cpu.Transpose().Sqrt(), 1e-6f);
+}
+
+TEST(SqrtCUDA, HandlesAnOffsetSlice) {
+    auto cpu = PositiveRamp<float>({4, 3});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    ExpectNear(gpu.Slice(0, 1, 3).Sqrt(), cpu.Slice(0, 1, 3).Sqrt(), 1e-6f);
+}
+
+TEST(SqrtCUDA, NegativeInputGivesNaNLikeCPU) {
+    Tensor<float> cpu({2}, -4.0f);
+    const auto v = Values(cpu.To(Device::CUDA).Sqrt());
+    EXPECT_TRUE(std::isnan(v[0]));
+    EXPECT_TRUE(std::isnan(v[1]));
+}
+
+TEST(SqrtCUDA, FreeFormForwardsToTheMember) {
+    auto cpu = PositiveRamp<float>({2, 2});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    ExpectNear(tensor::Sqrt(gpu), cpu.Sqrt(), 1e-6f);
+}
+
+// --- unary launcher ------------------------------------------------------------
+
+TEST(UnaryLauncher, ZeroSizeIsANoOp) {
+    EXPECT_NO_THROW(cuda::LaunchUnaryDevice<float>(nullptr, nullptr, 0, cuda::UnaryOp::Sqrt));
+}
+
+TEST(UnaryLauncher, SqrtWorksInPlace) {
+    auto cpu = PositiveRamp<float>({8});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    cuda::LaunchUnaryDevice(gpu.Data(), gpu.Data(), gpu.Size(), cuda::UnaryOp::Sqrt);
+    ExpectNear(gpu, cpu.Sqrt(), 1e-6f);
+}

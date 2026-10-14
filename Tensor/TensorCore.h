@@ -431,6 +431,13 @@ namespace tensor {
 
         Tensor<T> Sqrt() const {
             Tensor<T> result = Clone();
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA())
+            {
+                cuda::LaunchUnaryDevice(result.Data(),result.Data(), result.Size(), cuda::UnaryOp::Sqrt);
+                return result;
+            }
+#endif
             result.ForEach([](T& element) { element = std::sqrt(element); });
             return result;
         }
