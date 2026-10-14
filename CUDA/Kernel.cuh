@@ -56,4 +56,7 @@ namespace cuda{
 
     template <typename T>
     void LaunchFillDevice(T* out, T value, size_t size);
+
+    template <typename T>
+    void LaunchSumDevice(const T* in, T* out, size_t size);
 }

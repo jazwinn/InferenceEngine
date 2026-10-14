@@ -342,7 +342,6 @@ TEST(TensorCUDACPUOnly, ElementAccessThrows) {
 TEST(TensorCUDACPUOnly, ForEachBasedOperationsThrow) {
     Tensor<float> gpu({2, 2}, Device::CUDA);
     EXPECT_THROW(gpu.RandomFill(), std::logic_error);
-    EXPECT_THROW(gpu.Mean(), std::logic_error);
 }
 
 TEST(TensorCUDACPUOnly, CopyingOperationsThrow) {

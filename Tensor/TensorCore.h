@@ -452,9 +452,21 @@ namespace tensor {
             if (Size() == 0) {
                 throw std::invalid_argument("Cannot compute mean of an empty tensor.");
             }
+
+            Tensor<T>result({1}, T(0), GetDevice());
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA())
+            {
+                const Tensor<T> src = Contiguous();
+                cuda::LaunchSumDevice(src.Data(), result.Data(), src.Size());
+                result /= static_cast<T>(Size());
+                return result;
+            }
+#endif
             T sum = T(0);
             ForEach([&sum](const T& element) { sum += element; });
-            return Tensor<T>({1}, sum / static_cast<T>(Size()));
+            result.Data()[0] = sum / static_cast<T>(Size());
+            return result;
         }
 
         Tensor<T> Mean(size_t axis, bool keepdim = false) const {

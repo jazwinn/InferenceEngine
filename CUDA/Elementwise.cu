@@ -225,6 +225,8 @@ namespace cuda{
 
     template <typename T>
     void LaunchFillDevice(T* out, T value, size_t size){
+        if(size == 0) return;
+        
         constexpr size_t threads = 256;
         size_t blocks = CeilDiv(size, threads);
 
