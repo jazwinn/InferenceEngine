@@ -1,6 +1,9 @@
 #include "CUDA/Kernel.cuh"
 #include "CUDA/detail/common.cuh"
 
+#define INSTANTIATE_OPS(T) \
+    template void LaunchSumDevice<T>(const T* in, T* out, size_t size);
+
 namespace cuda{
 
     constexpr unsigned kReduceThreads = 256;
@@ -35,6 +38,5 @@ namespace cuda{
         CUDA_CHECK(cudaGetLastError());
     }
 
-    template void LaunchSumDevice<float>(const float*, float*, size_t);
-    template void LaunchSumDevice<double>(const double*, double*, size_t);
+    FOR_EACH_TYPE(INSTANTIATE_OPS);
 }

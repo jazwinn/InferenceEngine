@@ -58,5 +58,16 @@ namespace cuda{
     void LaunchFillDevice(T* out, T value, size_t size);
 
     template <typename T>
+    void LaunchStridedScalarDevice(T* out, T scalar,
+                                   const std::vector<size_t>& shape,
+                                   const std::vector<size_t>& stride,
+                                   BinaryOp op);
+
+    template <typename T>
+    void LaunchStridedFillDevice(T* out, T value,
+                                 const std::vector<size_t>& shape,
+                                 const std::vector<size_t>& stride);
+
+    template <typename T>
     void LaunchSumDevice(const T* in, T* out, size_t size);
 }

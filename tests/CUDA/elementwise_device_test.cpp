@@ -111,13 +111,95 @@ TEST(ScalarInPlaceCUDA, DivisionByZeroThrows) {
     EXPECT_THROW(gpu /= 0.0f, std::invalid_argument);
 }
 
-TEST(ScalarInPlaceCUDA, NonContiguousViewThrows) {
+TEST(ScalarInPlaceCUDA, ColumnSliceEveryOpMatchesCPU) {
+    auto cpu = Ramp<float>({3, 4});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    Tensor<float> gslice = gpu.Slice(1, 1, 2);
+    Tensor<float> cslice = cpu.Slice(1, 1, 2);
+    ASSERT_FALSE(gslice.IsContiguous());
+    gslice += 1.0f; cslice += 1.0f;
+    gslice -= 0.25f; cslice -= 0.25f;
+    gslice *= 3.0f; cslice *= 3.0f;
+    gslice /= 2.0f; cslice /= 2.0f;
+    ExpectNear(gpu, cpu, 1e-6f);
+}
+
+TEST(ScalarInPlaceCUDA, ColumnSliceLeavesOtherColumnsUntouched) {
+    Tensor<float> cpu({3, 4}, 1.0f);
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    gpu.Slice(1, 1, 2) *= 10.0f;
+    const auto v = Values(gpu);
+    for (size_t r = 0; r < 3; ++r)
+        for (size_t c = 0; c < 4; ++c)
+            EXPECT_EQ(v[r * 4 + c], (c == 1 || c == 2) ? 10.0f : 1.0f) << "at (" << r << "," << c << ")";
+}
+
+TEST(ScalarInPlaceCUDA, TransposedViewWritesThroughToParent) {
+    auto cpu = Ramp<float>({3, 4});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    Tensor<float> t = gpu.Transpose();
+    ASSERT_FALSE(t.IsContiguous());
+    t += 2.0f;
+    cpu += 2.0f;
+    ExpectNear(gpu, cpu, 0.0f);
+}
+
+TEST(ScalarInPlaceCUDA, SliceOf3DTransposeMatchesCPU) {
+    auto cpu = Ramp<float>({2, 3, 4});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    gpu.Transpose(0, 2).Slice(0, 1, 2) *= -1.5f;
+    cpu.Transpose(0, 2).Slice(0, 1, 2) *= -1.5f;
+    ExpectNear(gpu, cpu, 0.0f);
+}
+
+TEST(ScalarInPlaceCUDA, StridedIntView) {
+    Tensor<int> cpu({3, 4});
+    for (size_t i = 0; i < cpu.Size(); ++i) cpu.Data()[i] = static_cast<int>(i);
+    Tensor<int> gpu = cpu.To(Device::CUDA);
+    gpu.Slice(1, 0, 2) *= 3;
+    cpu.Slice(1, 0, 2) *= 3;
+    EXPECT_EQ(Values(gpu), Values(cpu));
+}
+
+TEST(ScalarInPlaceCUDA, StridedDivisionByZeroThrows) {
     Tensor<float> gpu = Ramp<float>({3, 4}).To(Device::CUDA);
     Tensor<float> slice = gpu.Slice(1, 1, 2);
-    EXPECT_THROW(slice += 1.0f, std::logic_error);
-    EXPECT_THROW(slice -= 1.0f, std::logic_error);
-    EXPECT_THROW(slice *= 2.0f, std::logic_error);
-    EXPECT_THROW(slice /= 2.0f, std::logic_error);
+    EXPECT_THROW(slice /= 0.0f, std::invalid_argument);
+}
+
+TEST(ScalarInPlaceCUDA, StridedReturnsSelf) {
+    Tensor<float> gpu = Ramp<float>({3, 4}).To(Device::CUDA);
+    Tensor<float> slice = gpu.Slice(1, 1, 2);
+    EXPECT_EQ(&(slice += 1.0f), &slice);
+}
+
+TEST(StridedScalarLauncher, EveryOpWritesOnlyMappedElements) {
+    const cuda::BinaryOp ops[] = {cuda::BinaryOp::Add, cuda::BinaryOp::Sub, cuda::BinaryOp::Mul, cuda::BinaryOp::Div};
+    const float expected[] = {6.0f, -2.0f, 8.0f, 0.5f};
+    for (int k = 0; k < 4; ++k) {
+        Tensor<float> gpu = Tensor<float>({3, 4}, 2.0f).To(Device::CUDA);
+        cuda::LaunchStridedScalarDevice(gpu.Data() + 1, 4.0f, {3, 2}, {4, 1}, ops[k]);
+        const auto v = Values(gpu);
+        for (size_t i = 0; i < v.size(); ++i) {
+            const size_t c = i % 4;
+            EXPECT_FLOAT_EQ(v[i], (c == 1 || c == 2) ? expected[k] : 2.0f) << "op " << k << " at index " << i;
+        }
+    }
+}
+
+TEST(StridedScalarLauncher, ZeroSizeIsANoOp) {
+    EXPECT_NO_THROW(cuda::LaunchStridedScalarDevice<float>(nullptr, 1.0f, {0, 3}, {3, 1}, cuda::BinaryOp::Add));
+}
+
+TEST(StridedScalarLauncher, RankTooLargeThrows) {
+    Tensor<float> gpu({1}, Device::CUDA);
+    std::vector<size_t> shape(9, 1), stride(9, 1);
+    EXPECT_THROW(cuda::LaunchStridedScalarDevice(gpu.Data(), 1.0f, shape, stride, cuda::BinaryOp::Add), std::invalid_argument);
+}
+
+TEST(StridedScalarLauncher, RankMismatchThrows) {
+    Tensor<float> gpu({4}, Device::CUDA);
+    EXPECT_THROW(cuda::LaunchStridedScalarDevice(gpu.Data(), 1.0f, {2, 2}, {1}, cuda::BinaryOp::Add), std::invalid_argument);
 }
 
 TEST(ScalarInPlaceCUDA, IntMatchesCPU) {
@@ -703,11 +785,48 @@ TEST(FillCUDA, ContiguousRowSliceOnlyWritesItsRows) {
     ExpectNear(gpu, cpu, 0.0f);
 }
 
-TEST(FillCUDA, NonContiguousViewThrows) {
-    Tensor<float> gpu = Ramp<float>({3, 4}).To(Device::CUDA);
+TEST(FillCUDA, ColumnSliceOnlyWritesItsElements) {
+    auto cpu = Ramp<float>({3, 4});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
     Tensor<float> col = gpu.Slice(1, 1, 2);
     ASSERT_FALSE(col.IsContiguous());
-    EXPECT_THROW(col.Fill(1.0f), std::logic_error);
+    col.Fill(9.0f);
+    cpu.Slice(1, 1, 2).Fill(9.0f);
+    ExpectNear(gpu, cpu, 0.0f);
+}
+
+TEST(FillCUDA, TransposedViewFillsEverything) {
+    auto cpu = Ramp<float>({3, 4});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    Tensor<float> t = gpu.Transpose();
+    ASSERT_FALSE(t.IsContiguous());
+    t.Fill(2.0f);
+    for (float v : Values(gpu)) EXPECT_EQ(v, 2.0f);
+}
+
+TEST(FillCUDA, StridedSliceOf3DTensor) {
+    auto cpu = Ramp<float>({2, 3, 4});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    gpu.Slice(2, 1, 2).Fill(-1.0f);
+    cpu.Slice(2, 1, 2).Fill(-1.0f);
+    ExpectNear(gpu, cpu, 0.0f);
+}
+
+TEST(FillCUDA, SliceOfTransposeOnlyWritesItsElements) {
+    auto cpu = Ramp<float>({4, 5});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    gpu.Transpose().Slice(0, 1, 2).Fill(7.0f);
+    cpu.Transpose().Slice(0, 1, 2).Fill(7.0f);
+    ExpectNear(gpu, cpu, 0.0f);
+}
+
+TEST(FillCUDA, StridedIntView) {
+    Tensor<int> cpu({3, 4});
+    for (size_t i = 0; i < cpu.Size(); ++i) cpu.Data()[i] = static_cast<int>(i);
+    Tensor<int> gpu = cpu.To(Device::CUDA);
+    gpu.Slice(1, 0, 1).Fill(-5);
+    cpu.Slice(1, 0, 1).Fill(-5);
+    EXPECT_EQ(Values(gpu), Values(cpu));
 }
 
 TEST(FillCUDA, CPUFillStillWorksInCUDABuild) {
@@ -730,4 +849,27 @@ TEST(FillLauncher, WritesExactlySizeElements) {
     const auto v = Values(gpu);
     for (size_t i = 0; i < 5; ++i) EXPECT_EQ(v[i], 5.0f) << "at index " << i;
     for (size_t i = 5; i < 8; ++i) EXPECT_EQ(v[i], 0.0f) << "at index " << i;
+}
+
+TEST(FillLauncher, StridedWritesOnlyMappedElements) {
+    Tensor<float> gpu({3, 4}, Device::CUDA);
+    cuda::LaunchStridedFillDevice(gpu.Data() + 1, 5.0f, {3, 2}, {4, 1});
+    const auto v = Values(gpu);
+    const std::vector<float> expected{0, 5, 5, 0, 0, 5, 5, 0, 0, 5, 5, 0};
+    EXPECT_EQ(v, expected);
+}
+
+TEST(FillLauncher, StridedZeroSizeIsANoOp) {
+    EXPECT_NO_THROW(cuda::LaunchStridedFillDevice<float>(nullptr, 1.0f, {0, 3}, {3, 1}));
+}
+
+TEST(FillLauncher, StridedRankTooLargeThrows) {
+    Tensor<float> gpu({1}, Device::CUDA);
+    std::vector<size_t> shape(9, 1), stride(9, 1);
+    EXPECT_THROW(cuda::LaunchStridedFillDevice(gpu.Data(), 1.0f, shape, stride), std::invalid_argument);
+}
+
+TEST(FillLauncher, StridedRankMismatchThrows) {
+    Tensor<float> gpu({4}, Device::CUDA);
+    EXPECT_THROW(cuda::LaunchStridedFillDevice(gpu.Data(), 1.0f, {2, 2}, {1}), std::invalid_argument);
 }

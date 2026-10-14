@@ -4,6 +4,7 @@
 
 #include "CUDA/Kernel.cuh"
 #include "CUDA/detail/common.cuh"
+#include "CUDA/detail/Layout.cuh"
 
 #define INSTANTIATE_OPS(T) \
     template void LaunchScalarDevice<T>(const T*, T*, T, size_t, BinaryOp); \
@@ -13,16 +14,10 @@
                                    const std::vector<size_t>& a_stride, \
                                    const std::vector<size_t>& b_stride, \
                                    const std::vector<size_t>& out_stride, \
-                                   BinaryOp op);
+                                   BinaryOp op); \
+    template void LaunchStridedScalarDevice<T>(T*, T, const std::vector<size_t>&, const std::vector<size_t>&, BinaryOp);
 namespace cuda{
 
-    struct BinaryLayout {
-        size_t shape[kMaxRank];
-        size_t a_stride[kMaxRank];
-        size_t b_stride[kMaxRank];
-        size_t out_stride[kMaxRank];
-        int rank;
-    };
 
     template <typename T>
     struct AddOp{__device__ T operator()(T a, T b)const{return a + b;}};
@@ -49,19 +44,13 @@ namespace cuda{
     }
 
     template <typename T, typename Op>
-    __global__ void StridedBinaryKernel(const T* A, const T* B, T* out, BinaryLayout layout, size_t size, Op op){
+    __global__ void StridedBinaryKernel(const T* A, const T* B, T* out, StridedLayout<3> layout, size_t size, Op op){
         size_t i = blockDim.x * blockIdx.x + threadIdx.x;
 
         if(i < size){
-            size_t rem = i, idxA = 0, idxB = 0, idxOut = 0;
-            for (int ax = layout.rank - 1; ax >= 0; --ax) {
-                size_t idx = rem % layout.shape[ax];
-                rem /= layout.shape[ax];
-                idxA += idx * layout.a_stride[ax];
-                idxB += idx * layout.b_stride[ax];
-                idxOut += idx * layout.out_stride[ax];
-            }
-            out[idxOut] = op(A[idxA], B[idxB]);
+            size_t off[3];
+            ViewOffsets(layout, i, off);
+            out[off[2]] = op(A[off[0]], B[off[1]]);
         }
     }
 
@@ -91,6 +80,29 @@ namespace cuda{
 
         if(i < size){
             out[i] = value;
+        }
+    }
+
+
+    template <typename T>
+    __global__ void StridedFillKernel(T* out, T value, StridedLayout<1> layout, size_t size){
+        size_t i = blockDim.x * blockIdx.x + threadIdx.x;
+
+        if(i < size){
+            size_t off[1];
+            ViewOffsets(layout, i, off);
+            out[off[0]] = value;
+        }
+    }
+
+    template <typename T, typename Op>
+    __global__ void StridedScalarKernel(T* out, T scalar, StridedLayout<1> layout, size_t size, Op op){
+        size_t i = blockDim.x * blockIdx.x + threadIdx.x;
+
+        if(i < size){
+            size_t off[1];
+            ViewOffsets(layout, i, off);
+            out[off[0]] = op(out[off[0]], scalar);
         }
     }
 
@@ -177,25 +189,8 @@ namespace cuda{
                                    const std::vector<size_t>& out_stride,
                                    BinaryOp op)
     {
-        if(shape.size() > kMaxRank){
-            throw std::invalid_argument("StridedBinary: Shape dimension exceed kMaxRank");
-        }
-        if(a_stride.size() != shape.size() || b_stride.size() != shape.size() || out_stride.size() != shape.size()){
-            throw std::invalid_argument("StridedBinary: stride rank does not match shape rank");
-        }
-
-        BinaryLayout layout{};
-        layout.rank = static_cast<int>(shape.size());
-
-        size_t size = 1;
-        for(int n = 0; n < layout.rank; ++n){
-            layout.shape[n] = shape[n];
-            layout.a_stride[n] = a_stride[n];
-            layout.b_stride[n] = b_stride[n];
-            layout.out_stride[n] = out_stride[n];
-
-            size *= shape[n];
-        }
+        size_t size = 0;
+        const StridedLayout<3> layout = MakeStridedLayout("StridedBinary", size, shape, a_stride, b_stride, out_stride);
 
         if(size == 0) return;//prevents lauching if grid = 0;
 
@@ -235,6 +230,59 @@ namespace cuda{
         CUDA_CHECK(cudaGetLastError());
     }
 
+    template <typename T>
+    void LaunchStridedFillDevice(T* out, T value,
+                                 const std::vector<size_t>& shape,
+                                 const std::vector<size_t>& stride)
+    {
+        size_t size = 0;
+        const StridedLayout<1> layout = MakeStridedLayout("StridedFill", size, shape, stride);
+
+        if(size == 0) return;
+
+        constexpr size_t threads = 256;
+        const size_t blocks = CeilDiv(size, threads);
+
+        StridedFillKernel<<<blocks, threads>>>(out, value, layout, size);
+
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void LaunchStridedScalarDevice(T* out, T scalar,
+                                   const std::vector<size_t>& shape,
+                                   const std::vector<size_t>& stride,
+                                   BinaryOp op)
+    {
+        size_t size = 0;
+        const StridedLayout<1> layout = MakeStridedLayout("StridedScalar", size, shape, stride);
+
+        if(size == 0) return;
+
+        constexpr size_t threads = 256;
+        const size_t blocks = CeilDiv(size, threads);
+
+        switch (op)
+        {
+        case BinaryOp::Add:
+            StridedScalarKernel<<<blocks, threads>>>(out, scalar, layout, size, AddOp<T>{});
+            break;
+        case BinaryOp::Sub:
+            StridedScalarKernel<<<blocks, threads>>>(out, scalar, layout, size, SubOp<T>{});
+            break;
+        case BinaryOp::Mul:
+            StridedScalarKernel<<<blocks, threads>>>(out, scalar, layout, size, MulOp<T>{});
+            break;
+        case BinaryOp::Div:
+            StridedScalarKernel<<<blocks, threads>>>(out, scalar, layout, size, DivOp<T>{});
+            break;
+        default:
+            throw std::invalid_argument("LaunchStridedScalarDevice: unsupported op.");
+        }
+
+        CUDA_CHECK(cudaGetLastError());
+    }
+
     INSTANTIATE_OPS(float)
     INSTANTIATE_OPS(double)
     INSTANTIATE_OPS(int)
@@ -242,7 +290,9 @@ namespace cuda{
     template void LaunchUnaryDevice<float>(const float*, float*, size_t, UnaryOp);
     template void LaunchUnaryDevice<double>(const double*, double*, size_t, UnaryOp);
 
-#define INSTANTIATE_FILL(T) template void LaunchFillDevice<T>(T*, T, size_t);
+#define INSTANTIATE_FILL(T) \
+    template void LaunchFillDevice<T>(T*, T, size_t); \
+    template void LaunchStridedFillDevice<T>(T*, T, const std::vector<size_t>&, const std::vector<size_t>&);
     FOR_EACH_ANY_TYPE(INSTANTIATE_FILL)
 
 }

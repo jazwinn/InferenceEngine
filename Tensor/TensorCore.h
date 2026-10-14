@@ -84,6 +84,10 @@ namespace tensor {
         void Fill(const T& value) {
 #ifdef IE_ENABLE_CUDA
             if(IsCUDA()){
+                if (!IsContiguous()) {
+                    cuda::LaunchStridedFillDevice(Data(), value, m_shape, m_stride);
+                    return;
+                }
                 cuda::LaunchFillDevice(Data(), value, Size());
                 return;
             }
@@ -370,13 +374,8 @@ namespace tensor {
 
         Tensor<T>& operator+=(const T& scalar) {
 #ifdef IE_ENABLE_CUDA
-            if (IsCUDA())
-            {
-                if (!IsContiguous()) {
-                    throw std::logic_error("operator+= (CUDA): tensor must be contiguous.");
-                }
-                cuda::LaunchScalarDevice(Data(), Data(), scalar, Size(), cuda::BinaryOp::Add);
-                return *this;
+            if (IsCUDA()) {
+                return ScalarOpInPlaceCUDA(scalar, cuda::BinaryOp::Add);
             }
             
 #endif
@@ -386,13 +385,8 @@ namespace tensor {
 
         Tensor<T>& operator-=(const T& scalar) {
 #ifdef IE_ENABLE_CUDA
-            if (IsCUDA())
-            {
-                if (!IsContiguous()) {
-                    throw std::logic_error("operator-= (CUDA): tensor must be contiguous.");
-                }
-                cuda::LaunchScalarDevice(Data(), Data(), scalar, Size(), cuda::BinaryOp::Sub);
-                return *this;
+            if (IsCUDA()) {
+                return ScalarOpInPlaceCUDA(scalar, cuda::BinaryOp::Sub);
             }
             
 #endif
@@ -402,13 +396,8 @@ namespace tensor {
 
         Tensor<T>& operator*=(const T& scalar) {
 #ifdef IE_ENABLE_CUDA
-            if (IsCUDA())
-            {
-                if (!IsContiguous()) {
-                    throw std::logic_error("operator*= (CUDA): tensor must be contiguous.");
-                }
-                cuda::LaunchScalarDevice(Data(), Data(), scalar, Size(), cuda::BinaryOp::Mul);
-                return *this;
+            if (IsCUDA()) {
+                return ScalarOpInPlaceCUDA(scalar, cuda::BinaryOp::Mul);
             }
             
 #endif
@@ -421,13 +410,8 @@ namespace tensor {
                 throw std::invalid_argument("Division by zero.");
             }
 #ifdef IE_ENABLE_CUDA
-            if (IsCUDA())
-            {
-                if (!IsContiguous()) {
-                    throw std::logic_error("operator/= (CUDA): tensor must be contiguous.");
-                }
-                cuda::LaunchScalarDevice(Data(), Data(), scalar, Size(), cuda::BinaryOp::Div);
-                return *this;
+            if (IsCUDA()) {
+                return ScalarOpInPlaceCUDA(scalar, cuda::BinaryOp::Div);
             }
 
 #endif
@@ -691,6 +675,15 @@ namespace tensor {
         }
 
 #ifdef IE_ENABLE_CUDA
+        Tensor<T>& ScalarOpInPlaceCUDA(const T& scalar, cuda::BinaryOp op) {
+            if (IsContiguous()) {
+                cuda::LaunchScalarDevice(Data(), Data(), scalar, Size(), op);
+            } else {
+                cuda::LaunchStridedScalarDevice(Data(), scalar, m_shape, m_stride, op);
+            }
+            return *this;
+        }
+
         Tensor<T>& BroadcastOpIntoCUDA(const Tensor<T>& other, cuda::BinaryOp op) {
             if (!IsCUDA() || !other.IsCUDA()) {
                 throw std::invalid_argument("In-place operator (CUDA): tensors on different devices.");
