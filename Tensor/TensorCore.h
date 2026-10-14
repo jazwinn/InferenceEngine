@@ -82,6 +82,12 @@ namespace tensor {
         long UseCount() const noexcept { return m_data ? m_data.use_count() : 0; }
 
         void Fill(const T& value) {
+#ifdef IE_ENABLE_CUDA
+            if(IsCUDA()){
+                cuda::LaunchFillDevice(Data(), value, Size());
+                return;
+            }
+#endif
             ForEach([&value](T& element) { element = value; });
         }
 
@@ -123,7 +129,7 @@ namespace tensor {
 
             Tensor<T> result(m_shape, m_device);
 
-        #ifdef IE_ENABLE_CUDA
+#ifdef IE_ENABLE_CUDA
             if (IsCUDA()) {
                 if (IsContiguous()) {
                     cuda::CopyDeviceToDevice(result.Data(), Data(), m_size * sizeof(T));
@@ -132,7 +138,7 @@ namespace tensor {
                 }
                 return result;
             }
-        #endif
+#endif
 
             T* out = result.m_data.get();
             size_t i = 0;

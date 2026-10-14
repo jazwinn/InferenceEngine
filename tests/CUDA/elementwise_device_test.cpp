@@ -635,3 +635,99 @@ TEST(UnaryLauncher, SqrtWorksInPlace) {
     cuda::LaunchUnaryDevice(gpu.Data(), gpu.Data(), gpu.Size(), cuda::UnaryOp::Sqrt);
     ExpectNear(gpu, cpu.Sqrt(), 1e-6f);
 }
+
+// --- fill ----------------------------------------------------------------------
+
+TEST(FillCUDA, FloatMatchesCPU) {
+    Tensor<float> cpu({3, 5});
+    Tensor<float> gpu({3, 5}, Device::CUDA);
+    cpu.Fill(2.5f);
+    gpu.Fill(2.5f);
+    EXPECT_TRUE(gpu.IsCUDA());
+    ExpectNear(gpu, cpu, 0.0f);
+}
+
+TEST(FillCUDA, NonZeroValueIsNotABytePattern) {
+    Tensor<float> gpu({4}, Device::CUDA);
+    gpu.Fill(1.0f);
+    for (float v : Values(gpu)) EXPECT_EQ(v, 1.0f);
+}
+
+TEST(FillCUDA, OverwritesExistingValues) {
+    Tensor<float> gpu = Ramp<float>({2, 3}).To(Device::CUDA);
+    gpu.Fill(-7.0f);
+    for (float v : Values(gpu)) EXPECT_EQ(v, -7.0f);
+}
+
+TEST(FillCUDA, LargeTensorSpansManyBlocks) {
+    Tensor<float> gpu({1000, 3}, Device::CUDA);
+    gpu.Fill(3.0f);
+    const auto v = Values(gpu);
+    ASSERT_EQ(v.size(), 3000u);
+    for (float x : v) EXPECT_EQ(x, 3.0f);
+}
+
+TEST(FillCUDA, Double) {
+    Tensor<double> gpu({2, 2}, Device::CUDA);
+    gpu.Fill(0.125);
+    for (double v : Values(gpu)) EXPECT_EQ(v, 0.125);
+}
+
+TEST(FillCUDA, Int) {
+    Tensor<int> gpu({3, 3}, Device::CUDA);
+    gpu.Fill(42);
+    for (int v : Values(gpu)) EXPECT_EQ(v, 42);
+}
+
+TEST(FillCUDA, Bool) {
+    Tensor<bool> gpu({2, 3}, Device::CUDA);
+    gpu.Fill(true);
+    Tensor<bool> cpu = gpu.To(Device::CPU);
+    for (size_t i = 0; i < cpu.Size(); ++i) EXPECT_TRUE(cpu.Data()[i]);
+}
+
+TEST(FillCUDA, Int64AndSizeT) {
+    Tensor<int64_t> a({3}, Device::CUDA);
+    Tensor<size_t> b({3}, Device::CUDA);
+    a.Fill(int64_t(-5000000000));
+    b.Fill(size_t(123456789012));
+    for (int64_t v : Values(a)) EXPECT_EQ(v, int64_t(-5000000000));
+    for (size_t v : Values(b)) EXPECT_EQ(v, size_t(123456789012));
+}
+
+TEST(FillCUDA, ContiguousRowSliceOnlyWritesItsRows) {
+    auto cpu = Ramp<float>({4, 3});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    gpu.Slice(0, 1, 2).Fill(9.0f);
+    cpu.Slice(0, 1, 2).Fill(9.0f);
+    ExpectNear(gpu, cpu, 0.0f);
+}
+
+TEST(FillCUDA, NonContiguousViewThrows) {
+    Tensor<float> gpu = Ramp<float>({3, 4}).To(Device::CUDA);
+    Tensor<float> col = gpu.Slice(1, 1, 2);
+    ASSERT_FALSE(col.IsContiguous());
+    EXPECT_THROW(col.Fill(1.0f), std::logic_error);
+}
+
+TEST(FillCUDA, CPUFillStillWorksInCUDABuild) {
+    Tensor<float> cpu({2, 2});
+    cpu.Fill(4.0f);
+    EXPECT_FALSE(cpu.IsCUDA());
+    EXPECT_EQ(cpu(1, 1), 4.0f);
+}
+
+// --- fill launcher -------------------------------------------------------------
+
+TEST(FillLauncher, ZeroSizeIsANoOp) {
+    EXPECT_NO_THROW(cuda::LaunchFillDevice<float>(nullptr, 1.0f, 0));
+}
+
+TEST(FillLauncher, WritesExactlySizeElements) {
+    Tensor<float> gpu({8}, Device::CUDA);
+    gpu.Fill(0.0f);
+    cuda::LaunchFillDevice(gpu.Data(), 5.0f, 5);
+    const auto v = Values(gpu);
+    for (size_t i = 0; i < 5; ++i) EXPECT_EQ(v[i], 5.0f) << "at index " << i;
+    for (size_t i = 5; i < 8; ++i) EXPECT_EQ(v[i], 0.0f) << "at index " << i;
+}

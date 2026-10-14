@@ -36,6 +36,9 @@ namespace cuda{
     template <typename T>
     struct DivOp{__device__ T operator()(T a, T b)const{return a / b;}};
 
+    template <typename T>
+    struct SqrtOp{__device__ T operator()(T x)const{return sqrt(x);}};
+
     template <typename T, typename Op>
     __global__ void BinaryKernel(const T* A, const T* B, T* out, size_t size, Op op){
         size_t i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -73,15 +76,21 @@ namespace cuda{
         }
     }
 
-    template <typename T>
-    struct SqrtOp{__device__ T operator()(T x)const{return sqrt(x);}};
-
     template <typename T, typename Op>
     __global__ void UnaryKernel(const T* in, T* out, size_t size, Op op){
         size_t i = blockDim.x * blockIdx.x + threadIdx.x;
 
         if(i < size){
             out[i] = op(in[i]);
+        }
+    }
+
+    template <typename T>
+    __global__ void FillKernel(T* out, T value, size_t size){
+        size_t i = blockDim.x * blockIdx.x + threadIdx.x;
+
+        if(i < size){
+            out[i] = value;
         }
     }
 
@@ -214,11 +223,24 @@ namespace cuda{
         CUDA_CHECK(cudaGetLastError());
     }
 
+    template <typename T>
+    void LaunchFillDevice(T* out, T value, size_t size){
+        constexpr size_t threads = 256;
+        size_t blocks = CeilDiv(size, threads);
+
+        FillKernel<<<blocks, threads>>>(out, value, size);
+
+        CUDA_CHECK(cudaGetLastError());
+    }
+
     INSTANTIATE_OPS(float)
     INSTANTIATE_OPS(double)
     INSTANTIATE_OPS(int)
 
     template void LaunchUnaryDevice<float>(const float*, float*, size_t, UnaryOp);
     template void LaunchUnaryDevice<double>(const double*, double*, size_t, UnaryOp);
+
+#define INSTANTIATE_FILL(T) template void LaunchFillDevice<T>(T*, T, size_t);
+    FOR_EACH_ANY_TYPE(INSTANTIATE_FILL)
 
 }

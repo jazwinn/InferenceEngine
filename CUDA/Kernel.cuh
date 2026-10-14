@@ -54,4 +54,6 @@ namespace cuda{
                                    const std::vector<size_t>& out_stride,
                                    BinaryOp op);
 
+    template <typename T>
+    void LaunchFillDevice(T* out, T value, size_t size);
 }
