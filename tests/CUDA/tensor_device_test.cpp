@@ -386,10 +386,44 @@ TEST(TensorCUDAMatMul, InnerDimensionMismatchThrows) {
     EXPECT_THROW(MatMul(a, b), std::invalid_argument);
 }
 
-TEST(TensorCUDAMatMul, NonContiguousOperandThrows) {
-    Tensor<float> a({2, 3}, Device::CUDA);
-    Tensor<float> b({2, 3}, Device::CUDA);
-    EXPECT_THROW(MatMul(a, b.Transpose()), std::logic_error);
+TEST(TensorCUDAMatMul, TransposedRightOperandMatchesCPU) {
+    Tensor<float> a = Iota<float>({2, 3});
+    Tensor<float> b = Iota<float>({4, 3});
+    Tensor<float> gb = b.To(Device::CUDA).Transpose();
+    ASSERT_FALSE(gb.IsContiguous());
+    Tensor<float> result = MatMul(a.To(Device::CUDA), gb);
+    EXPECT_EQ(result.Shape(), (std::vector<size_t>{2, 4}));
+    EXPECT_EQ(Values(result), Values(MatMul(a, b.Transpose())));
+}
+
+TEST(TensorCUDAMatMul, TransposedLeftOperandMatchesCPU) {
+    Tensor<float> a = Iota<float>({3, 2});
+    Tensor<float> b = Iota<float>({3, 4});
+    EXPECT_EQ(Values(MatMul(a.To(Device::CUDA).Transpose(), b.To(Device::CUDA))),
+              Values(MatMul(a.Transpose(), b)));
+}
+
+TEST(TensorCUDAMatMul, BothOperandsTransposedMatchesCPU) {
+    Tensor<float> a = Iota<float>({3, 2});
+    Tensor<float> b = Iota<float>({4, 3});
+    EXPECT_EQ(Values(MatMul(a.To(Device::CUDA).Transpose(), b.To(Device::CUDA).Transpose())),
+              Values(MatMul(a.Transpose(), b.Transpose())));
+}
+
+TEST(TensorCUDAMatMul, ColumnSliceOperandMatchesCPU) {
+    Tensor<float> a = Iota<float>({2, 5});
+    Tensor<float> b = Iota<float>({3, 4});
+    Tensor<float> ga = a.To(Device::CUDA).Slice(1, 1, 3);
+    ASSERT_FALSE(ga.IsContiguous());
+    EXPECT_EQ(Values(MatMul(ga, b.To(Device::CUDA))), Values(MatMul(a.Slice(1, 1, 3), b)));
+}
+
+TEST(TensorCUDAMatMul, NonContiguousOperandIsNotModified) {
+    Tensor<float> a = Iota<float>({2, 3});
+    Tensor<float> b = Iota<float>({4, 3});
+    Tensor<float> gb = b.To(Device::CUDA);
+    MatMul(a.To(Device::CUDA), gb.Transpose());
+    EXPECT_EQ(Values(gb), Values(b));
 }
 
 TEST(TensorCUDAMatMul, BatchedOperandThrows) {

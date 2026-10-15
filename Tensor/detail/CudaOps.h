@@ -35,11 +35,11 @@ namespace tensor::detail {
         if (A.Rank() != 2 || B.Rank() != 2) {
             throw std::logic_error("MatMul (CUDA): only 2D operands are supported.");
         }
-        if (!A.IsContiguous() || !B.IsContiguous()) {
-            throw std::logic_error("MatMul (CUDA): operands must be contiguous.");
-        }
         Tensor<T> result(result_shape, Device::CUDA);
-        cuda::LaunchMatMulDevice(A.Data(), B.Data(), result.Data(), rows, inner, cols);
+
+        const Tensor<T> a = A.Contiguous();
+        const Tensor<T> b = B.Contiguous();
+        cuda::LaunchMatMulDevice(a.Data(), b.Data(), result.Data(), rows, inner, cols);
         return result;
     }
 
@@ -63,15 +63,16 @@ namespace tensor::detail {
         if (B.Size() != 0 && B.Size() != out) {
             throw std::invalid_argument("Linear (CUDA): bias size must equal out_features.");
         }
-        if (!X.IsContiguous() || !W.IsContiguous() || !B.IsContiguous()) {
-            throw std::logic_error("Linear (CUDA): operands must be contiguous.");
-        }
 
-        const size_t M = X.Size() / in;
-        std::vector<size_t> shape = X.Shape();
+        const Tensor<T> x = X.Contiguous();
+        const Tensor<T> w = W.Contiguous();
+        const Tensor<T> b = B.Contiguous();
+
+        const size_t M = x.Size() / in;
+        std::vector<size_t> shape = x.Shape();
         shape.back() = out;
         Tensor<T> result(shape, Device::CUDA);
-        cuda::LaunchLinearDevice(X.Data(), W.Data(), B.Size() ? B.Data() : nullptr, result.Data(), M, in, out);
+        cuda::LaunchLinearDevice(x.Data(), w.Data(), b.Size() ? b.Data() : nullptr, result.Data(), M, in, out);
         return result;
     }
 

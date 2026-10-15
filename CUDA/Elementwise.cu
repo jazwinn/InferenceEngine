@@ -5,6 +5,7 @@
 #include "CUDA/Kernel.cuh"
 #include "CUDA/detail/common.cuh"
 #include "CUDA/detail/Layout.cuh"
+#include "CUDA/detail/Ops.cuh"
 
 #define INSTANTIATE_OPS(T) \
     template void LaunchScalarDevice<T>(const T*, T*, T, size_t, BinaryOp); \
@@ -16,23 +17,13 @@
                                    const std::vector<size_t>& out_stride, \
                                    BinaryOp op); \
     template void LaunchStridedScalarDevice<T>(T*, T, const std::vector<size_t>&, const std::vector<size_t>&, BinaryOp);
+
+#define INSTANTIATE_FILL(T) \
+    template void LaunchFillDevice<T>(T*, T, size_t); \
+    template void LaunchStridedFillDevice<T>(T*, T, const std::vector<size_t>&, const std::vector<size_t>&);
+
 namespace cuda{
 
-
-    template <typename T>
-    struct AddOp{__device__ T operator()(T a, T b)const{return a + b;}};
-
-    template <typename T>
-    struct SubOp{__device__ T operator()(T a, T b)const{return a - b;}};
-
-    template <typename T>
-    struct MulOp{__device__ T operator()(T a, T b)const{return a * b;}};
-
-    template <typename T>
-    struct DivOp{__device__ T operator()(T a, T b)const{return a / b;}};
-
-    template <typename T>
-    struct SqrtOp{__device__ T operator()(T x)const{return sqrt(x);}};
 
     template <typename T, typename Op>
     __global__ void BinaryKernel(const T* A, const T* B, T* out, size_t size, Op op){
@@ -290,9 +281,6 @@ namespace cuda{
     template void LaunchUnaryDevice<float>(const float*, float*, size_t, UnaryOp);
     template void LaunchUnaryDevice<double>(const double*, double*, size_t, UnaryOp);
 
-#define INSTANTIATE_FILL(T) \
-    template void LaunchFillDevice<T>(T*, T, size_t); \
-    template void LaunchStridedFillDevice<T>(T*, T, const std::vector<size_t>&, const std::vector<size_t>&);
     FOR_EACH_ANY_TYPE(INSTANTIATE_FILL)
 
 }

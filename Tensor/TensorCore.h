@@ -131,7 +131,7 @@ namespace tensor {
                 return Tensor<T>();
             }
 
-            Tensor<T> result(m_shape, m_device);
+            Tensor<T> result(m_shape, GetDevice());
 
 #ifdef IE_ENABLE_CUDA
             if (IsCUDA()) {

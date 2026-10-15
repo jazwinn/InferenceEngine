@@ -123,10 +123,52 @@ TEST(TensorLinearCUDA, WrongBiasSizeThrows) {
     EXPECT_THROW(tensor::Linear(X, W, B), std::invalid_argument);
 }
 
-TEST(TensorLinearCUDA, NonContiguousInputThrows) {
-    Tensor<float> X({3, 2}, Device::CUDA);
-    Tensor<float> W({4, 3}, Device::CUDA);
-    EXPECT_THROW(tensor::Linear(X.Transpose(), W), std::logic_error);
+TEST(TensorLinearCUDA, TransposedInputMatchesCPU) {
+    auto X = Pattern<float>({3, 2}, 1);
+    auto W = Pattern<float>({4, 3}, 2);
+    auto B = Pattern<float>({4}, 3);
+    Tensor<float> gx = X.To(Device::CUDA).Transpose();
+    ASSERT_FALSE(gx.IsContiguous());
+    ExpectNear(tensor::Linear(gx, W.To(Device::CUDA), B.To(Device::CUDA)),
+               tensor::Linear(X.Transpose(), W, B), 1e-5f);
+}
+
+TEST(TensorLinearCUDA, TransposedWeightMatchesCPU) {
+    auto X = Pattern<float>({5, 6}, 4);
+    auto Wt = Pattern<float>({6, 3}, 5);
+    Tensor<float> gw = Wt.To(Device::CUDA).Transpose();
+    ASSERT_FALSE(gw.IsContiguous());
+    ExpectNear(tensor::Linear(X.To(Device::CUDA), gw), tensor::Linear(X, Wt.Transpose()), 1e-5f);
+}
+
+TEST(TensorLinearCUDA, StridedBiasMatchesCPU) {
+    auto X = Pattern<float>({2, 3}, 6);
+    auto W = Pattern<float>({4, 3}, 7);
+    auto Bsrc = Pattern<float>({4, 2}, 8);
+    Tensor<float> gb = Bsrc.To(Device::CUDA).Slice(1, 1, 1).Squeeze(1);
+    ASSERT_EQ(gb.Shape(), (std::vector<size_t>{4}));
+    ASSERT_FALSE(gb.IsContiguous());
+    ExpectNear(tensor::Linear(X.To(Device::CUDA), W.To(Device::CUDA), gb),
+               tensor::Linear(X, W, Bsrc.Slice(1, 1, 1).Squeeze(1)), 1e-5f);
+}
+
+TEST(TensorLinearCUDA, ColumnSliceOfInputMatchesCPU) {
+    auto X = Pattern<float>({4, 10}, 9);
+    auto W = Pattern<float>({3, 6}, 10);
+    Tensor<float> gx = X.To(Device::CUDA).Slice(1, 2, 6);
+    ASSERT_FALSE(gx.IsContiguous());
+    ExpectNear(tensor::Linear(gx, W.To(Device::CUDA)), tensor::Linear(X.Slice(1, 2, 6), W), 1e-5f);
+}
+
+TEST(TensorLinearCUDA, NonContiguous3DInputMatchesCPU) {
+    auto X = Pattern<float>({3, 2, 8}, 11);
+    auto W = Pattern<float>({5, 8}, 12);
+    auto B = Pattern<float>({5}, 13);
+    Tensor<float> gx = X.To(Device::CUDA).Transpose(0, 1);
+    ASSERT_FALSE(gx.IsContiguous());
+    Tensor<float> Y = tensor::Linear(gx, W.To(Device::CUDA), B.To(Device::CUDA));
+    EXPECT_EQ(Y.Shape(), (std::vector<size_t>{2, 3, 5}));
+    ExpectNear(Y, tensor::Linear(X.Transpose(0, 1), W, B), 1e-5f);
 }
 
 // --- nn::Linear after Module::To --------------------------------------------
