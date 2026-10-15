@@ -468,9 +468,22 @@ namespace tensor {
                 new_shape.erase(new_shape.begin() + axis);
             }
 
-            Tensor<T> result(new_shape);
+            Tensor<T> result(new_shape, GetDevice());
 
-            RequireCPU("Mean");
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA())
+            {
+                const Tensor<T> src = Contiguous();
+                size_t outer = 1;
+                for (size_t d = 0; d < axis; ++d) outer *= m_shape[d];
+                size_t inner = 1;
+                for (size_t d = axis + 1; d < n; ++d) inner *= m_shape[d];
+
+                cuda::LaunchMeanAxisDevice(src.Data(), result.Data(), outer, reduced, inner);
+                return result;
+            }
+#endif
+
             const std::vector<size_t> result_stride = detail::RowMajorStrides(new_shape);
             std::vector<size_t> out_stride(n, 0);
             for (size_t i = 0, k = 0; i < n; ++i) {

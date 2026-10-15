@@ -70,4 +70,7 @@ namespace cuda{
 
     template <typename T>
     void LaunchSumDevice(const T* in, T* out, size_t size);
+
+    template <typename T>
+    void LaunchMeanAxisDevice(const T* in, T* out, size_t outer, size_t reduced, size_t inner);
 }
