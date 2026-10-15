@@ -67,6 +67,7 @@ Then run `build-vs/Release/inference.exe` from the repository root, so the relat
 - [ ] Memory — load weights straight into parameters (loading currently peaks at about 2× model size), memory-mapped weights, arena allocation, no allocation in the hot loop
 - [ ] Quantization — int8/int4 weights, BF16/FP16 storage and compute paths
 - [ ] GPU backend (CUDA/Vulkan) behind a device abstraction
+- [ ] Fused RMSNorm/LayerNorm CUDA kernels — one block per row reusing `BlockReduce`; replaces the ~6 launches and 3 full-size temporaries of the composed-op path (about 7N memory traffic down to 2–3N)
 
 **Architectures**
 - [x] RoPE, with `default`, `linear` and `llama3` frequency scaling
