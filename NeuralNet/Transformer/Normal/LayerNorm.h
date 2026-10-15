@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -70,45 +69,16 @@ namespace nn::transformer::norm{
                 }
             }
 
-            // Clone() compacts, so the flat walk below is valid even when the
-            // caller hands us a strided view.
-            input.RequireCPU("LayerNorm");
-            gamma->RequireCPU("LayerNorm");
-            beta->RequireCPU("LayerNorm");
-            Tensor<T> output = input.Clone();
-            const Tensor<T> gamma_c = gamma->Contiguous();
-            const Tensor<T> beta_c = beta->Contiguous();
-
-            T* out = output.Data();
-            const T* g = gamma_c.Data();
-            const T* b = beta_c.Data();
-
             const size_t inner = m_normalized_size;
-            const size_t outer = output.Size() / inner;
+            const size_t outer = input.Size() / inner;
+            const Tensor<T> x = input.Reshape(outer, inner);
 
-            for (size_t o = 0; o < outer; ++o) {
-                T* block = out + o * inner;
+            const Tensor<T> mean = Mean(x, 1, true);
+            const Tensor<T> centred = x - mean;
+            const Tensor<T> variance = Mean(centred * centred, 1, true);
+            const Tensor<T> normalized = (centred / Sqrt(variance + m_epsilon)).Reshape(shape);
 
-                T sum = T(0);
-                for (size_t i = 0; i < inner; ++i) {
-                    sum += block[i];
-                }
-                const T mean = sum / static_cast<T>(inner);
-
-                // Biased variance (divide by N), matching torch.nn.LayerNorm.
-                T squared = T(0);
-                for (size_t i = 0; i < inner; ++i) {
-                    const T centred = block[i] - mean;
-                    squared += centred * centred;
-                }
-                const T inv_stddev = T(1) / std::sqrt(squared / static_cast<T>(inner) + m_epsilon);
-
-                for (size_t i = 0; i < inner; ++i) {
-                    block[i] = (block[i] - mean) * inv_stddev * g[i] + b[i];
-                }
-            }
-
-            return output;
+            return normalized * *gamma + *beta;
         }
 
         const std::vector<size_t>& NormalizedShape() const noexcept { return m_normalized_shape; }

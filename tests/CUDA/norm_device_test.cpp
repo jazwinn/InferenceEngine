@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 
+#include <NeuralNet/Transformer/Normal/LayerNorm.h>
 #include <NeuralNet/Transformer/Normal/RMSNorm.h>
 #include <Tensor/Tensor.h>
 
 #include <cmath>
 #include <vector>
 
+using nn::transformer::norm::LayerNorm;
 using nn::transformer::norm::RMSNorm;
 using tensor::Device;
 using tensor::Tensor;
@@ -166,4 +168,163 @@ TEST(RMSNormCUDA, CUDAInputWithCPUWeightThrows) {
     RMSNorm<float> norm(4);
     Tensor<float> x({2, 4}, Device::CUDA);
     EXPECT_ANY_THROW(norm.Forward(x));
+}
+
+// --- LayerNorm -----------------------------------------------------------------
+
+namespace {
+
+template <typename T>
+void ExpectLayerNormGPUMatchesCPU(const std::vector<size_t>& input_shape,
+                                  const std::vector<size_t>& normalized_shape,
+                                  T epsilon, T tol) {
+    LayerNorm<T> cpu_norm(normalized_shape, epsilon);
+    *cpu_norm.gamma = Wave<T>(normalized_shape, 0.5);
+    *cpu_norm.beta = Wave<T>(normalized_shape, 2.0);
+    LayerNorm<T> gpu_norm(normalized_shape, epsilon);
+    *gpu_norm.gamma = *cpu_norm.gamma;
+    *gpu_norm.beta = *cpu_norm.beta;
+    gpu_norm.To(Device::CUDA);
+
+    auto x = Wave<T>(input_shape, 1.0);
+    Tensor<T> expected = cpu_norm.Forward(x);
+    Tensor<T> actual = gpu_norm.Forward(x.To(Device::CUDA));
+
+    EXPECT_TRUE(actual.IsCUDA());
+    ExpectNear(actual, expected, tol);
+}
+
+}
+
+TEST(LayerNormCUDA, TwoDimensionalMatchesCPU) {
+    ExpectLayerNormGPUMatchesCPU<float>({4, 16}, {16}, 1e-5f, 1e-5f);
+}
+
+TEST(LayerNormCUDA, PromptBatchMatchesCPU) {
+    ExpectLayerNormGPUMatchesCPU<float>({2, 7, 32}, {32}, 1e-5f, 1e-5f);
+}
+
+TEST(LayerNormCUDA, SingleTokenMatchesCPU) {
+    ExpectLayerNormGPUMatchesCPU<float>({1, 1, 64}, {64}, 1e-5f, 1e-5f);
+}
+
+TEST(LayerNormCUDA, GPT2SizedHiddenDimMatchesCPU) {
+    ExpectLayerNormGPUMatchesCPU<float>({3, 768}, {768}, 1e-5f, 1e-4f);
+}
+
+TEST(LayerNormCUDA, MultiDimNormalizedShapeMatchesCPU) {
+    ExpectLayerNormGPUMatchesCPU<float>({2, 3, 4, 5}, {4, 5}, 1e-5f, 1e-5f);
+}
+
+TEST(LayerNormCUDA, NormalizeWholeInputMatchesCPU) {
+    ExpectLayerNormGPUMatchesCPU<float>({3, 4}, {3, 4}, 1e-5f, 1e-5f);
+}
+
+TEST(LayerNormCUDA, LargeEpsilonMatchesCPU) {
+    ExpectLayerNormGPUMatchesCPU<float>({3, 8}, {8}, 0.5f, 1e-5f);
+}
+
+TEST(LayerNormCUDA, DoubleMatchesCPU) {
+    ExpectLayerNormGPUMatchesCPU<double>({2, 5, 24}, {24}, 1e-6, 1e-12);
+}
+
+TEST(LayerNormCUDA, KnownValues) {
+    LayerNorm<float> norm(2, 0.0f);
+    norm.To(Device::CUDA);
+    Tensor<float> x({1, 2});
+    x(0, 0) = 1.0f;
+    x(0, 1) = 3.0f;
+    const auto out = Values(norm.Forward(x.To(Device::CUDA)));
+    EXPECT_NEAR(out[0], -1.0f, 1e-6f);
+    EXPECT_NEAR(out[1], 1.0f, 1e-6f);
+}
+
+TEST(LayerNormCUDA, OutputHasZeroMeanAndUnitVariance) {
+    LayerNorm<float> norm(256, 1e-5f);
+    norm.To(Device::CUDA);
+    const auto out = Values(norm.Forward(Wave<float>({1, 256}, 0.7).To(Device::CUDA)));
+    float mean = 0.0f;
+    for (float v : out) mean += v;
+    mean /= 256.0f;
+    float var = 0.0f;
+    for (float v : out) var += (v - mean) * (v - mean);
+    var /= 256.0f;
+    EXPECT_NEAR(mean, 0.0f, 1e-5f);
+    EXPECT_NEAR(var, 1.0f, 1e-3f);
+}
+
+TEST(LayerNormCUDA, GammaAndBetaApplyPerFeature) {
+    LayerNorm<float> norm(2, 0.0f);
+    Tensor<float> g({2}), b({2});
+    g(0) = 2.0f; g(1) = 3.0f;
+    b(0) = 10.0f; b(1) = -10.0f;
+    *norm.gamma = g;
+    *norm.beta = b;
+    norm.To(Device::CUDA);
+    Tensor<float> x({1, 2});
+    x(0, 0) = 1.0f;
+    x(0, 1) = 3.0f;
+    const auto out = Values(norm.Forward(x.To(Device::CUDA)));
+    EXPECT_NEAR(out[0], 8.0f, 1e-5f);
+    EXPECT_NEAR(out[1], -7.0f, 1e-5f);
+}
+
+TEST(LayerNormCUDA, ConstantRowGivesBeta) {
+    LayerNorm<float> norm(4, 1e-5f);
+    *norm.beta = Wave<float>({4}, 0.3);
+    const auto beta = Values(*norm.beta);
+    norm.To(Device::CUDA);
+    const auto out = Values(norm.Forward(Tensor<float>({2, 4}, 5.0f).To(Device::CUDA)));
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_TRUE(std::isfinite(out[i]));
+        EXPECT_NEAR(out[i], beta[i % 4], 1e-5f) << "at index " << i;
+    }
+}
+
+TEST(LayerNormCUDA, NonContiguousInputMatchesCPU) {
+    LayerNorm<float> cpu_norm(4, 1e-5f);
+    *cpu_norm.gamma = Wave<float>({4}, 0.2);
+    *cpu_norm.beta = Wave<float>({4}, 1.1);
+    LayerNorm<float> gpu_norm(4, 1e-5f);
+    *gpu_norm.gamma = *cpu_norm.gamma;
+    *gpu_norm.beta = *cpu_norm.beta;
+    gpu_norm.To(Device::CUDA);
+
+    auto x = Wave<float>({4, 3}, 0.9);
+    Tensor<float> gx = x.To(Device::CUDA).Transpose();
+    ASSERT_FALSE(gx.IsContiguous());
+    ExpectNear(gpu_norm.Forward(gx), cpu_norm.Forward(x.Transpose()), 1e-5f);
+}
+
+TEST(LayerNormCUDA, DoesNotMutateInput) {
+    LayerNorm<float> norm(8, 1e-5f);
+    norm.To(Device::CUDA);
+    auto x = Wave<float>({3, 8}, 0.1);
+    Tensor<float> gx = x.To(Device::CUDA);
+    norm.Forward(gx);
+    EXPECT_EQ(Values(gx), Values(x));
+}
+
+TEST(LayerNormCUDA, ParametersMoveToCUDA) {
+    LayerNorm<float> norm(8);
+    norm.To(Device::CUDA);
+    EXPECT_TRUE(norm.gamma->IsCUDA());
+    EXPECT_TRUE(norm.beta->IsCUDA());
+}
+
+TEST(LayerNormCUDA, TrailingShapeMismatchThrows) {
+    LayerNorm<float> norm(8);
+    norm.To(Device::CUDA);
+    EXPECT_THROW(norm.Forward(Tensor<float>({2, 4}, Device::CUDA)), std::invalid_argument);
+}
+
+TEST(LayerNormCUDA, CPUInputWithCUDAParametersThrows) {
+    LayerNorm<float> norm(3);
+    norm.To(Device::CUDA);
+    EXPECT_ANY_THROW(norm.Forward(Tensor<float>({2, 3}, 1.0f)));
+}
+
+TEST(LayerNormCUDA, CUDAInputWithCPUParametersThrows) {
+    LayerNorm<float> norm(3);
+    EXPECT_ANY_THROW(norm.Forward(Tensor<float>({2, 3}, Device::CUDA)));
 }
