@@ -69,7 +69,6 @@ namespace tensor {
     template <typename T>
     Tensor<T> Softmax(const Tensor<T>& input, long long axis = -1) {
         const size_t ax = detail::NormalizeAxis(axis, input.Rank());
-        input.RequireCPU("Softmax");
 
         const Tensor<T> src = input.Contiguous();
         const std::vector<size_t>& shape = src.Shape();
@@ -84,6 +83,12 @@ namespace tensor {
         for (size_t i = ax + 1; i < shape.size(); ++i) {
             inner *= shape[i];
         }
+
+#ifdef IE_ENABLE_CUDA
+        if(input.IsCUDA()){
+            return detail::SoftmaxCUDA(src, outer, count, inner);
+        }
+#endif
 
         const T* in = src.Data();
         T* out = output.Data();

@@ -3,6 +3,8 @@
 #include <CUDA/Kernel.cuh>
 #include <Tensor/Tensor.h>
 
+#include <cmath>
+#include <limits>
 #include <vector>
 
 using tensor::Device;
@@ -281,4 +283,173 @@ TEST(MeanAxisLauncher, OverwritesOutputWithoutZeroing) {
     Tensor<float> back = out.To(Device::CPU);
     EXPECT_FLOAT_EQ(back.Data()[0], 2.0f);
     EXPECT_FLOAT_EQ(back.Data()[1], 2.0f);
+}
+
+// --- softmax -------------------------------------------------------------------
+
+namespace {
+
+template <typename T>
+void ExpectSoftmaxMatchesCPU(const Tensor<T>& cpu, long long axis, T tol) {
+    Tensor<T> gpu = tensor::Softmax(cpu.To(Device::CUDA), axis);
+    Tensor<T> expected = tensor::Softmax(cpu, axis);
+    ASSERT_TRUE(gpu.IsCUDA());
+    ASSERT_EQ(gpu.Shape(), expected.Shape());
+    Tensor<T> back = gpu.To(Device::CPU);
+    for (size_t i = 0; i < expected.Size(); ++i) {
+        EXPECT_NEAR(back.Data()[i], expected.Data()[i], tol) << "at index " << i;
+    }
+}
+
+template <typename T>
+Tensor<T> Scaled(const std::vector<size_t>& shape, T scale) {
+    Tensor<T> t = Ramp<T>(shape);
+    for (size_t i = 0; i < t.Size(); ++i) t.Data()[i] *= scale;
+    return t;
+}
+
+}
+
+TEST(SoftmaxCUDA, LastAxisMatchesCPU) {
+    ExpectSoftmaxMatchesCPU<float>(Ramp<float>({4, 9}), -1, 1e-6f);
+}
+
+TEST(SoftmaxCUDA, FirstAxisMatchesCPU) {
+    ExpectSoftmaxMatchesCPU<float>(Ramp<float>({5, 7}), 0, 1e-6f);
+}
+
+TEST(SoftmaxCUDA, MiddleAxisOf3DMatchesCPU) {
+    ExpectSoftmaxMatchesCPU<float>(Ramp<float>({2, 6, 4}), 1, 1e-6f);
+}
+
+TEST(SoftmaxCUDA, EveryAxisOf4DMatchesCPU) {
+    for (long long axis = 0; axis < 4; ++axis) {
+        ExpectSoftmaxMatchesCPU<float>(Ramp<float>({2, 3, 4, 5}), axis, 1e-6f);
+    }
+}
+
+TEST(SoftmaxCUDA, NegativeAxisMatchesPositive) {
+    auto cpu = Ramp<float>({2, 3, 4});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    Tensor<float> a = tensor::Softmax(gpu, -2).To(Device::CPU);
+    Tensor<float> b = tensor::Softmax(gpu, 1).To(Device::CPU);
+    for (size_t i = 0; i < a.Size(); ++i) EXPECT_EQ(a.Data()[i], b.Data()[i]);
+}
+
+TEST(SoftmaxCUDA, AttentionScoresShapeMatchesCPU) {
+    ExpectSoftmaxMatchesCPU<float>(Ramp<float>({1, 4, 7, 7}), -1, 1e-6f);
+}
+
+TEST(SoftmaxCUDA, RowLongerThanBlockLoops) {
+    ExpectSoftmaxMatchesCPU<float>(Ramp<float>({3, 1000}), -1, 1e-6f);
+}
+
+TEST(SoftmaxCUDA, VocabularySizedRowMatchesCPU) {
+    ExpectSoftmaxMatchesCPU<float>(Scaled<float>({1, 32000}, 4.0f), -1, 1e-6f);
+}
+
+TEST(SoftmaxCUDA, ManyRowsManyBlocks) {
+    ExpectSoftmaxMatchesCPU<float>(Ramp<float>({700, 64}), -1, 1e-6f);
+}
+
+TEST(SoftmaxCUDA, RowsSumToOne) {
+    Tensor<float> out = tensor::Softmax(Ramp<float>({6, 300}).To(Device::CUDA), -1).To(Device::CPU);
+    for (size_t r = 0; r < 6; ++r) {
+        float sum = 0.0f;
+        for (size_t c = 0; c < 300; ++c) sum += out.Data()[r * 300 + c];
+        EXPECT_NEAR(sum, 1.0f, 1e-5f) << "row " << r;
+    }
+}
+
+TEST(SoftmaxCUDA, LargeValuesDoNotOverflow) {
+    Tensor<float> cpu({2, 4});
+    const float vals[] = {1000.0f, 1001.0f, 1002.0f, 1003.0f, -1000.0f, -999.0f, -998.0f, -997.0f};
+    for (size_t i = 0; i < 8; ++i) cpu.Data()[i] = vals[i];
+    Tensor<float> out = tensor::Softmax(cpu.To(Device::CUDA), -1).To(Device::CPU);
+    for (size_t i = 0; i < 8; ++i) EXPECT_TRUE(std::isfinite(out.Data()[i])) << "at index " << i;
+    ExpectSoftmaxMatchesCPU<float>(cpu, -1, 1e-6f);
+}
+
+TEST(SoftmaxCUDA, ConstantRowIsUniform) {
+    Tensor<float> cpu({2, 5}, 3.0f);
+    Tensor<float> out = tensor::Softmax(cpu.To(Device::CUDA), -1).To(Device::CPU);
+    for (size_t i = 0; i < out.Size(); ++i) EXPECT_FLOAT_EQ(out.Data()[i], 0.2f);
+}
+
+TEST(SoftmaxCUDA, MaskedPositionsBecomeZero) {
+    Tensor<float> cpu({1, 4});
+    cpu(0, 0) = 1.0f; cpu(0, 1) = 2.0f;
+    cpu(0, 2) = -std::numeric_limits<float>::infinity();
+    cpu(0, 3) = -std::numeric_limits<float>::infinity();
+    Tensor<float> out = tensor::Softmax(cpu.To(Device::CUDA), -1).To(Device::CPU);
+    EXPECT_EQ(out.Data()[2], 0.0f);
+    EXPECT_EQ(out.Data()[3], 0.0f);
+    EXPECT_NEAR(out.Data()[0] + out.Data()[1], 1.0f, 1e-6f);
+}
+
+TEST(SoftmaxCUDA, MaxNotInFirstThreadSlice) {
+    Tensor<float> cpu({1, 600}, -5.0f);
+    cpu(0, 599) = 10.0f;
+    ExpectSoftmaxMatchesCPU<float>(cpu, -1, 1e-6f);
+}
+
+TEST(SoftmaxCUDA, ReducedLengthOneIsAllOnes) {
+    Tensor<float> out = tensor::Softmax(Ramp<float>({4, 1}).To(Device::CUDA), -1).To(Device::CPU);
+    for (size_t i = 0; i < out.Size(); ++i) EXPECT_FLOAT_EQ(out.Data()[i], 1.0f);
+}
+
+TEST(SoftmaxCUDA, Double) {
+    ExpectSoftmaxMatchesCPU<double>(Ramp<double>({3, 5, 7}), -1, 1e-12);
+    ExpectSoftmaxMatchesCPU<double>(Ramp<double>({3, 5, 7}), 1, 1e-12);
+}
+
+TEST(SoftmaxCUDA, TransposedViewMatchesCPU) {
+    auto cpu = Ramp<float>({3, 4});
+    Tensor<float> t = cpu.To(Device::CUDA).Transpose();
+    ASSERT_FALSE(t.IsContiguous());
+    Tensor<float> out = tensor::Softmax(t, -1).To(Device::CPU);
+    Tensor<float> expected = tensor::Softmax(cpu.Transpose(), -1);
+    ASSERT_EQ(out.Shape(), expected.Shape());
+    for (size_t i = 0; i < expected.Size(); ++i) EXPECT_NEAR(out.Data()[i], expected.Data()[i], 1e-6f);
+}
+
+TEST(SoftmaxCUDA, ColumnSliceMatchesCPU) {
+    auto cpu = Ramp<float>({4, 6});
+    Tensor<float> s = cpu.To(Device::CUDA).Slice(1, 1, 4);
+    ASSERT_FALSE(s.IsContiguous());
+    Tensor<float> out = tensor::Softmax(s, -1).To(Device::CPU);
+    Tensor<float> expected = tensor::Softmax(cpu.Slice(1, 1, 4), -1);
+    for (size_t i = 0; i < expected.Size(); ++i) EXPECT_NEAR(out.Data()[i], expected.Data()[i], 1e-6f);
+}
+
+TEST(SoftmaxCUDA, DoesNotMutateSource) {
+    auto cpu = Ramp<float>({3, 4});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    tensor::Softmax(gpu, -1);
+    Tensor<float> back = gpu.To(Device::CPU);
+    for (size_t i = 0; i < cpu.Size(); ++i) EXPECT_EQ(back.Data()[i], cpu.Data()[i]);
+}
+
+TEST(SoftmaxCUDA, AxisOutOfRangeThrows) {
+    Tensor<float> gpu({2, 3}, Device::CUDA);
+    EXPECT_ANY_THROW(tensor::Softmax(gpu, 2));
+}
+
+// --- softmax launcher ----------------------------------------------------------
+
+TEST(SoftmaxLauncher, ZeroRowsIsANoOp) {
+    EXPECT_NO_THROW(cuda::LaunchSoftMaxDevice<float>(nullptr, nullptr, 0, 4, 1));
+}
+
+TEST(SoftmaxLauncher, ZeroReducedIsANoOp) {
+    EXPECT_NO_THROW(cuda::LaunchSoftMaxDevice<float>(nullptr, nullptr, 2, 0, 1));
+}
+
+TEST(SoftmaxLauncher, WorksInPlace) {
+    auto cpu = Ramp<float>({3, 8});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    cuda::LaunchSoftMaxDevice(gpu.Data(), gpu.Data(), 3, 8, 1);
+    Tensor<float> back = gpu.To(Device::CPU);
+    Tensor<float> expected = tensor::Softmax(cpu, -1);
+    for (size_t i = 0; i < expected.Size(); ++i) EXPECT_NEAR(back.Data()[i], expected.Data()[i], 1e-6f);
 }

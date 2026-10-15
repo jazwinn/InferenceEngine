@@ -20,6 +20,12 @@ namespace cuda
     struct SqrtOp{__device__ T operator()(T x)const{return sqrt(x);}};
 
     template <typename T>
+    struct MaxOp{__device__ T operator()(T a, T b)const{return a > b ? a : b;}};
+
+    template <typename T>
+    struct MinOp{__device__ T operator()(T a, T b)const{return a < b ? a : b;}};
+
+    template <typename T>
     struct RELUops{
         __device__ T operator()(T x) const {
             return (x < T(0))? T(0) : x;

@@ -73,4 +73,7 @@ namespace cuda{
 
     template <typename T>
     void LaunchMeanAxisDevice(const T* in, T* out, size_t outer, size_t reduced, size_t inner);
+
+    template <typename T>
+    void LaunchSoftMaxDevice(const T* in, T* out, size_t outer, size_t reduced, size_t inner);
 }

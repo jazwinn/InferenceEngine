@@ -248,9 +248,16 @@ TEST(ModuleToCUDA, ForwardWithCPUInputThrows) {
 
 // --- CPU-only modules throw instead of touching GPU memory ------------------
 
-TEST(CPUOnlyModules, SoftmaxThrowsOnCUDAInput) {
-    Tensor<float> gpu({2, 3}, Device::CUDA);
-    EXPECT_THROW(nn::Softmax<float>().Forward(gpu), std::logic_error);
+TEST(SoftmaxModuleCUDA, ForwardMatchesCPU) {
+    Tensor<float> cpu({2, 3});
+    for (size_t i = 0; i < cpu.Size(); ++i) cpu.Data()[i] = static_cast<float>(i) * 0.5f - 1.0f;
+    nn::Softmax<float> softmax;
+    Tensor<float> gpu = softmax.Forward(cpu.To(Device::CUDA));
+    EXPECT_TRUE(gpu.IsCUDA());
+    const auto actual = Values(gpu);
+    const auto expected = Values(softmax.Forward(cpu));
+    ASSERT_EQ(actual.size(), expected.size());
+    for (size_t i = 0; i < actual.size(); ++i) EXPECT_NEAR(actual[i], expected[i], 1e-6f) << "at index " << i;
 }
 
 TEST(CPUOnlyModules, LayerNormThrowsOnCUDAInputOrParameters) {

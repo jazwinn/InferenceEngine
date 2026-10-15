@@ -123,6 +123,20 @@ namespace tensor::detail {
     }
 
     
+    template <typename T>
+    Tensor<T> SoftmaxCUDA(const Tensor<T>& input, size_t outer, size_t reduced, size_t inner){
+        if(!input.IsCUDA()){
+            throw std::invalid_argument("Softmax (CUDA): Tensor is of different device");
+        }
+        if(!input.IsContiguous()){
+            throw std::logic_error("Softmax (CUDA): operand must be contiguous.");
+        }
+        Tensor<T> result(input.Shape(), Device::CUDA);
+
+        cuda::LaunchSoftMaxDevice(input.Data(), result.Data(), outer, reduced, inner);
+
+        return result;
+    }
 
 
 }

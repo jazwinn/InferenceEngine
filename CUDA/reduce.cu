@@ -6,7 +6,9 @@
 
 #define INSTANTIATE_OPS(T) \
     template void LaunchSumDevice<T>(const T* in, T* out, size_t size); \
-    template void LaunchMeanAxisDevice<T>(const T* in, T* out, size_t outer, size_t reduced, size_t inner);
+    template void LaunchMeanAxisDevice<T>(const T* in, T* out, size_t outer, size_t reduced, size_t inner); \
+    template void LaunchSoftMaxDevice<T>(const T* in, T* out, size_t outer, size_t reduced, size_t inner);
+
 
 namespace cuda{
 
@@ -39,6 +41,32 @@ namespace cuda{
     }
 
     template <typename T>
+    __global__ void SoftmaxKernel(const T* in, T* out, size_t reduced, size_t inner){
+        const size_t o = blockIdx.x / inner;
+        const size_t i = blockIdx.x % inner;
+        const T* base = in + o * reduced * inner + i;
+
+        T Maxlocal = T(base[0]);
+        for (size_t r = threadIdx.x; r < reduced; r += blockDim.x) {
+            Maxlocal = MaxOp<T>{}(Maxlocal, base[r * inner]);
+        }
+
+        const T Max = BlockReduce<kReduceThreads>(Maxlocal, MaxOp<T>{});
+
+        T ExpLocal(0);
+        for (size_t r = threadIdx.x; r < reduced; r += blockDim.x) {
+            ExpLocal += exp(base[r * inner] - Max);
+        }
+
+        const T Sum = BlockReduce<kReduceThreads>(ExpLocal, AddOp<T>{});
+
+        T* out_base = out + o * reduced * inner + i;
+        for (size_t r = threadIdx.x; r < reduced; r += blockDim.x) {
+            out_base[r * inner] = exp(base[r * inner] - Max) / Sum;
+        }
+    }
+
+    template <typename T>
     void LaunchSumDevice(const T* in, T* out, size_t size){
         if (size == 0) return;
 
@@ -54,6 +82,14 @@ namespace cuda{
         const size_t blocks = outer * inner;
         if (blocks == 0 || reduced == 0) return;
         MeanAxisKernel<<<blocks, kReduceThreads>>>(in, out, reduced, inner);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void LaunchSoftMaxDevice(const T* in, T* out, size_t outer, size_t reduced, size_t inner){
+        const size_t blocks = outer * inner;
+        if (blocks == 0 || reduced == 0) return;
+        SoftmaxKernel<<<blocks, kReduceThreads>>>(in, out, reduced, inner);
         CUDA_CHECK(cudaGetLastError());
     }
 
