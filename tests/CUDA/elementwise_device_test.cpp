@@ -4,6 +4,7 @@
 #include <Tensor/Tensor.h>
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -872,4 +873,164 @@ TEST(FillLauncher, StridedRankTooLargeThrows) {
 TEST(FillLauncher, StridedRankMismatchThrows) {
     Tensor<float> gpu({4}, Device::CUDA);
     EXPECT_THROW(cuda::LaunchStridedFillDevice(gpu.Data(), 1.0f, {2, 2}, {1}), std::invalid_argument);
+}
+
+// --- masked fill ---------------------------------------------------------------
+
+namespace {
+
+Tensor<bool> Checker(const std::vector<size_t>& shape, size_t period) {
+    Tensor<bool> m(shape);
+    for (size_t i = 0; i < m.Size(); ++i) m.Data()[i] = (i % period) == 0;
+    return m;
+}
+
+Tensor<bool> Causal(size_t rows, size_t cols) {
+    Tensor<bool> m({rows, cols});
+    for (size_t q = 0; q < rows; ++q)
+        for (size_t k = 0; k < cols; ++k) m(q, k) = k > q;
+    return m;
+}
+
+void ExpectMaskedFillMatchesCPU(const Tensor<float>& cpu, const Tensor<bool>& mask, float value) {
+    Tensor<float> gpu = cpu.To(Device::CUDA).MaskedFill(mask.To(Device::CUDA), value);
+    Tensor<float> expected = cpu.MaskedFill(mask, value);
+    ASSERT_TRUE(gpu.IsCUDA());
+    ASSERT_EQ(gpu.Shape(), expected.Shape());
+    const auto a = Values(gpu);
+    const auto e = Values(expected);
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::isinf(e[i])) EXPECT_EQ(a[i], e[i]) << "at index " << i;
+        else EXPECT_FLOAT_EQ(a[i], e[i]) << "at index " << i;
+    }
+}
+
+}
+
+TEST(MaskedFillCUDA, SameShapeMatchesCPU) {
+    ExpectMaskedFillMatchesCPU(Ramp<float>({3, 5}), Checker({3, 5}, 3), -1.0f);
+}
+
+TEST(MaskedFillCUDA, AllFalseChangesNothing) {
+    auto cpu = Ramp<float>({2, 4});
+    Tensor<bool> mask({2, 4}, false);
+    EXPECT_EQ(Values(cpu.To(Device::CUDA).MaskedFill(mask.To(Device::CUDA), 9.0f)), Values(cpu));
+}
+
+TEST(MaskedFillCUDA, AllTrueReplacesEverything) {
+    Tensor<bool> mask({2, 4}, true);
+    for (float v : Values(Ramp<float>({2, 4}).To(Device::CUDA).MaskedFill(mask.To(Device::CUDA), 7.0f))) EXPECT_EQ(v, 7.0f);
+}
+
+TEST(MaskedFillCUDA, NegativeInfinityForAttention) {
+    ExpectMaskedFillMatchesCPU(Ramp<float>({4, 4}), Causal(4, 4), -std::numeric_limits<float>::infinity());
+}
+
+TEST(MaskedFillCUDA, CausalMaskBroadcastsAcrossBatchAndHeads) {
+    Tensor<bool> causal = Causal(5, 5).Unsqueeze(0).Unsqueeze(0);
+    ExpectMaskedFillMatchesCPU(Ramp<float>({2, 3, 5, 5}), causal, -std::numeric_limits<float>::infinity());
+}
+
+TEST(MaskedFillCUDA, LowerRankMaskBroadcasts) {
+    ExpectMaskedFillMatchesCPU(Ramp<float>({2, 3, 4}), Checker({3, 4}, 2), 0.0f);
+}
+
+TEST(MaskedFillCUDA, LengthOneAxisBroadcasts) {
+    ExpectMaskedFillMatchesCPU(Ramp<float>({3, 4}), Checker({3, 1}, 2), 5.0f);
+}
+
+TEST(MaskedFillCUDA, ColumnMaskBroadcastsAlongRows) {
+    ExpectMaskedFillMatchesCPU(Ramp<float>({3, 4}), Checker({1, 4}, 2), 5.0f);
+}
+
+TEST(MaskedFillCUDA, NonContiguousSourceMatchesCPU) {
+    auto cpu = Ramp<float>({4, 3});
+    Tensor<bool> mask = Checker({3, 4}, 3);
+    Tensor<float> view = cpu.To(Device::CUDA).Transpose();
+    ASSERT_FALSE(view.IsContiguous());
+    Tensor<float> out = view.MaskedFill(mask.To(Device::CUDA), -1.0f);
+    EXPECT_EQ(Values(out), Values(cpu.Transpose().MaskedFill(mask, -1.0f)));
+}
+
+TEST(MaskedFillCUDA, NonContiguousMaskMatchesCPU) {
+    Tensor<bool> big = Checker({4, 6}, 4);
+    Tensor<bool> cpu_mask = big.Slice(1, 1, 4);
+    Tensor<bool> gpu_mask = big.To(Device::CUDA).Slice(1, 1, 4);
+    ASSERT_FALSE(gpu_mask.IsContiguous());
+    auto cpu = Ramp<float>({4, 4});
+    Tensor<float> out = cpu.To(Device::CUDA).MaskedFill(gpu_mask, -2.0f);
+    EXPECT_EQ(Values(out), Values(cpu.MaskedFill(cpu_mask, -2.0f)));
+}
+
+TEST(MaskedFillCUDA, SlicedCausalWindowForDecoding) {
+    Tensor<bool> full = Causal(8, 8);
+    Tensor<bool> cpu_window = full.Slice(0, 5, 1).Slice(1, 0, 6);
+    Tensor<bool> gpu_window = full.To(Device::CUDA).Slice(0, 5, 1).Slice(1, 0, 6);
+    auto scores = Ramp<float>({2, 3, 1, 6});
+    const float ninf = -std::numeric_limits<float>::infinity();
+    Tensor<float> out = scores.To(Device::CUDA).MaskedFill(gpu_window, ninf);
+    EXPECT_EQ(Values(out), Values(scores.MaskedFill(cpu_window, ninf)));
+}
+
+TEST(MaskedFillCUDA, TransposedBroadcastMaskMatchesCPU) {
+    Tensor<bool> base = Checker({4, 3}, 2);
+    Tensor<bool> cpu_mask = base.Transpose();
+    Tensor<bool> gpu_mask = base.To(Device::CUDA).Transpose();
+    ASSERT_FALSE(gpu_mask.IsContiguous());
+    auto cpu = Ramp<float>({2, 3, 4});
+    Tensor<float> out = cpu.To(Device::CUDA).MaskedFill(gpu_mask, 1.5f);
+    EXPECT_EQ(Values(out), Values(cpu.MaskedFill(cpu_mask, 1.5f)));
+}
+
+TEST(MaskedFillCUDA, ManyBlocks) {
+    ExpectMaskedFillMatchesCPU(Ramp<float>({300, 64}), Checker({300, 64}, 7), -3.0f);
+}
+
+TEST(MaskedFillCUDA, Double) {
+    Tensor<double> cpu = Ramp<double>({3, 4});
+    Tensor<bool> mask = Checker({3, 4}, 2);
+    EXPECT_EQ(Values(cpu.To(Device::CUDA).MaskedFill(mask.To(Device::CUDA), 0.25)), Values(cpu.MaskedFill(mask, 0.25)));
+}
+
+TEST(MaskedFillCUDA, Int) {
+    Tensor<int> cpu({2, 3});
+    for (size_t i = 0; i < cpu.Size(); ++i) cpu.Data()[i] = static_cast<int>(i);
+    Tensor<bool> mask = Checker({2, 3}, 2);
+    EXPECT_EQ(Values(cpu.To(Device::CUDA).MaskedFill(mask.To(Device::CUDA), -9)), Values(cpu.MaskedFill(mask, -9)));
+}
+
+TEST(MaskedFillCUDA, DoesNotMutateOrAliasTheSource) {
+    auto cpu = Ramp<float>({2, 3});
+    Tensor<float> gpu = cpu.To(Device::CUDA);
+    Tensor<float> out = gpu.MaskedFill(Tensor<bool>({2, 3}, true).To(Device::CUDA), 0.0f);
+    EXPECT_FALSE(out.SharesStorage(gpu));
+    EXPECT_EQ(Values(gpu), Values(cpu));
+}
+
+TEST(MaskedFillCUDA, MixedDevicesThrow) {
+    Tensor<float> cpu({2, 2}, 1.0f);
+    Tensor<bool> cpu_mask({2, 2}, true);
+    Tensor<float> gpu({2, 2}, Device::CUDA);
+    Tensor<bool> gpu_mask = cpu_mask.To(Device::CUDA);
+    EXPECT_THROW(gpu.MaskedFill(cpu_mask, 0.0f), std::invalid_argument);
+    EXPECT_THROW(cpu.MaskedFill(gpu_mask, 0.0f), std::invalid_argument);
+}
+
+TEST(MaskedFillCUDA, IncompatibleMaskThrows) {
+    Tensor<float> gpu({2, 3}, Device::CUDA);
+    Tensor<bool> mask = Tensor<bool>({2, 4}, true).To(Device::CUDA);
+    EXPECT_THROW(gpu.MaskedFill(mask, 0.0f), std::invalid_argument);
+}
+
+// --- masked fill launchers -----------------------------------------------------
+
+TEST(MaskedFillLauncher, ZeroSizeIsANoOp) {
+    EXPECT_NO_THROW(cuda::LaunchMaskedFillDevice<float>(nullptr, nullptr, nullptr, 1.0f, 0));
+    EXPECT_NO_THROW(cuda::LaunchStridedMaskedFillDevice<float>(nullptr, nullptr, nullptr, 1.0f, {0, 3}, {3, 1}));
+}
+
+TEST(MaskedFillLauncher, StridedRankMismatchThrows) {
+    Tensor<float> gpu({4}, Device::CUDA);
+    Tensor<bool> mask({4}, Device::CUDA);
+    EXPECT_THROW(cuda::LaunchStridedMaskedFillDevice(gpu.Data(), gpu.Data(), mask.Data(), 1.0f, {2, 2}, {1}), std::invalid_argument);
 }

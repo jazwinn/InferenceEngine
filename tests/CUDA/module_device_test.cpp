@@ -267,7 +267,3 @@ TEST(CPUOnlyModules, EmbeddingThrowsOnCUDAIndicesOrTable) {
     EXPECT_THROW(embedding.Forward(Tensor<int64_t>({3})), std::logic_error);
 }
 
-TEST(CPUOnlyModules, MaskedFillThrowsOnCUDATensor) {
-    Tensor<float> gpu({2, 2}, Device::CUDA);
-    EXPECT_THROW(gpu.MaskedFill(Tensor<bool>({2, 2}, true), 0.0f), std::logic_error);
-}

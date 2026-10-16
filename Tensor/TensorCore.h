@@ -532,12 +532,27 @@ namespace tensor {
             if (detail::BroadcastShape(m_shape, mask.Shape()) != m_shape) {
                 throw std::invalid_argument("Mask shape is not broadcast-compatible with the tensor.");
             }
-            RequireCPU("MaskedFill");
-            mask.RequireCPU("MaskedFill");
+            if(GetDevice() != mask.GetDevice()){
+                throw std::invalid_argument("Mask is not the same device.");
+            }
 
+            Tensor<T> result = Clone();
+
+#ifdef IE_ENABLE_CUDA
+            if (IsCUDA()) {
+                if (mask.Shape() == m_shape && mask.IsContiguous()) {
+                    cuda::LaunchMaskedFillDevice(result.Data(), result.Data(), mask.Data(), value, m_size);
+                } else {
+                    const std::vector<size_t> mask_stride =
+                        detail::BroadcastStrides(mask.Shape(), mask.Strides(), m_shape);
+                    cuda::LaunchStridedMaskedFillDevice(result.Data(), result.Data(), mask.Data(), value, m_shape, mask_stride);
+                }
+                return result;
+            }
+#endif
             // Clone() holds this tensor compacted in row-major order, so the
             // output walks flat while the mask walks its own broadcast strides.
-            Tensor<T> result = Clone();
+            
             T* out = result.Data();
             const bool* msk = mask.Data();
             const std::vector<size_t> mask_stride =

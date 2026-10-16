@@ -20,7 +20,9 @@
 
 #define INSTANTIATE_FILL(T) \
     template void LaunchFillDevice<T>(T*, T, size_t); \
-    template void LaunchStridedFillDevice<T>(T*, T, const std::vector<size_t>&, const std::vector<size_t>&);
+    template void LaunchStridedFillDevice<T>(T*, T, const std::vector<size_t>&, const std::vector<size_t>&); \
+    template void LaunchMaskedFillDevice<T>(const T*, T*, const bool*, T, size_t); \
+    template void LaunchStridedMaskedFillDevice<T>(const T*, T*, const bool*, T, const std::vector<size_t>&, const std::vector<size_t>&);
 
 namespace cuda{
 
@@ -74,6 +76,15 @@ namespace cuda{
         }
     }
 
+    template <typename T>
+    __global__ void MaskedFillKernel(const T* in, T* out, const bool* mask, T value, size_t size){
+        size_t i = blockDim.x * blockIdx.x + threadIdx.x;
+
+        if(i < size){
+            out[i] = mask[i] ? value : in[i];
+        }
+    }
+
 
     template <typename T>
     __global__ void StridedFillKernel(T* out, T value, StridedLayout<1> layout, size_t size){
@@ -83,6 +94,17 @@ namespace cuda{
             size_t off[1];
             ViewOffsets(layout, i, off);
             out[off[0]] = value;
+        }
+    }
+
+    template <typename T>
+    __global__ void StridedMaskedFillKernel(const T* in, T* out, const bool* mask, T value, StridedLayout<1> mask_layout, size_t size){
+        size_t i = blockDim.x * blockIdx.x + threadIdx.x;
+
+        if(i < size){
+            size_t off[1];
+            ViewOffsets(mask_layout, i, off);
+            out[i] = mask[off[0]] ? value : in[i];
         }
     }
 
@@ -270,6 +292,36 @@ namespace cuda{
         default:
             throw std::invalid_argument("LaunchStridedScalarDevice: unsupported op.");
         }
+
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void LaunchMaskedFillDevice(const T* in, T* out, const bool* mask, T value, size_t size){
+        if(size == 0) return;
+
+        constexpr size_t threads = 256;
+        const size_t blocks = CeilDiv(size, threads);
+
+        MaskedFillKernel<<<blocks, threads>>>(in, out, mask, value, size);
+
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void LaunchStridedMaskedFillDevice(const T* in, T* out, const bool* mask, T value,
+                                       const std::vector<size_t>& shape,
+                                       const std::vector<size_t>& mask_stride)
+    {
+        size_t size = 0;
+        const StridedLayout<1> layout = MakeStridedLayout("StridedMaskedFill", size, shape, mask_stride);
+
+        if(size == 0) return;
+
+        constexpr size_t threads = 256;
+        const size_t blocks = CeilDiv(size, threads);
+
+        StridedMaskedFillKernel<<<blocks, threads>>>(in, out, mask, value, layout, size);
 
         CUDA_CHECK(cudaGetLastError());
     }

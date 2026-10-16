@@ -427,15 +427,6 @@ TEST(TensorCUDAMatMul, BatchedOperandThrows) {
     EXPECT_THROW(MatMul(a, b), std::logic_error);
 }
 
-TEST(TensorCUDACPUOnly, MaskedFillThrowsForCUDAMaskOrTensor) {
-    Tensor<float> cpu({2, 2}, 1.0f);
-    Tensor<bool> cpu_mask({2, 2}, true);
-    Tensor<float> gpu({2, 2}, Device::CUDA);
-    Tensor<bool> gpu_mask({2, 2}, Device::CUDA);
-    EXPECT_THROW(gpu.MaskedFill(cpu_mask, 0.0f), std::logic_error);
-    EXPECT_THROW(cpu.MaskedFill(gpu_mask, 0.0f), std::logic_error);
-}
-
 TEST(TensorCUDACPUOnly, RequireCPUMessageNamesTheOperation) {
     Tensor<float> gpu({1}, Device::CUDA);
     try {

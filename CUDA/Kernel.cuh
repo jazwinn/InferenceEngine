@@ -69,6 +69,14 @@ namespace cuda{
                                  const std::vector<size_t>& stride);
 
     template <typename T>
+    void LaunchMaskedFillDevice(const T* in, T* out, const bool* mask, T value, size_t size);
+
+    template <typename T>
+    void LaunchStridedMaskedFillDevice(const T* in, T* out, const bool* mask, T value,
+                                       const std::vector<size_t>& shape,
+                                       const std::vector<size_t>& mask_stride);
+
+    template <typename T>
     void LaunchSumDevice(const T* in, T* out, size_t size);
 
     template <typename T>
