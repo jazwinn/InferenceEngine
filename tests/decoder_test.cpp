@@ -131,7 +131,7 @@ TEST(DecoderConstruction, RotaryConfigSharesOneTableAcrossBlocks) {
 
     ASSERT_TRUE(decoder.rope);
     for (const auto& block : decoder.blocks) EXPECT_EQ(block->attention->RoPE, decoder.rope);
-    EXPECT_EQ(decoder.rope.use_count(), static_cast<long>(kLayers + 1));
+    EXPECT_EQ(decoder.rope.use_count(), static_cast<long>(2 * kLayers + 1));
 }
 
 TEST(DecoderConstruction, LearnedPositionsHaveNoRotaryTable) {
@@ -373,7 +373,7 @@ TEST(DecoderConstruction, PassesRopeScalingFromTheConfig) {
     Decoder<float> without_scaling(plain);
 
     const size_t pair = 1;
-    const double scaled_angle = std::atan2(with_scaling.rope->sin(1, pair), with_scaling.rope->cos(1, pair));
-    const double plain_angle = std::atan2(without_scaling.rope->sin(1, pair), without_scaling.rope->cos(1, pair));
+    const double scaled_angle = std::atan2((*with_scaling.rope->sin)(1, pair), (*with_scaling.rope->cos)(1, pair));
+    const double plain_angle = std::atan2((*without_scaling.rope->sin)(1, pair), (*without_scaling.rope->cos)(1, pair));
     EXPECT_NEAR(scaled_angle / plain_angle, 0.25, 1e-5);
 }

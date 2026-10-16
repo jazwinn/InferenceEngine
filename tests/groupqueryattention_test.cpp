@@ -414,7 +414,7 @@ TEST(GroupQueryAttentionRope, LayersShareOneRotaryEmbedding) {
 
     EXPECT_EQ(first.RoPE, rope);
     EXPECT_EQ(second.RoPE, rope);
-    EXPECT_EQ(rope.use_count(), 3);
+    EXPECT_EQ(rope.use_count(), 5);
 }
 
 TEST(GroupQueryAttentionRope, RotaryTablesAreNotParameters) {

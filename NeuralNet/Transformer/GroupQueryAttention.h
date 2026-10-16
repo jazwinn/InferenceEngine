@@ -55,6 +55,9 @@ namespace nn::transformer{
             this->RegisterSubmodule("key", key);
             this->RegisterSubmodule("value", value);
             this->RegisterSubmodule("output_proj", output_proj);
+            if (RoPE) {
+                this->RegisterSubmodule("rope", RoPE);
+            }
         }
 
 

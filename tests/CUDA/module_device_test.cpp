@@ -267,11 +267,6 @@ TEST(CPUOnlyModules, EmbeddingThrowsOnCUDAIndicesOrTable) {
     EXPECT_THROW(embedding.Forward(Tensor<int64_t>({3})), std::logic_error);
 }
 
-TEST(CPUOnlyModules, RoPEThrowsOnCUDAInput) {
-    nn::transformer::RotaryEmbedding<float> rope(4, 8);
-    EXPECT_THROW(rope.Apply(Tensor<float>({1, 2, 3, 4}, Device::CUDA), 0), std::logic_error);
-}
-
 TEST(CPUOnlyModules, MaskedFillThrowsOnCUDATensor) {
     Tensor<float> gpu({2, 2}, Device::CUDA);
     EXPECT_THROW(gpu.MaskedFill(Tensor<bool>({2, 2}, true), 0.0f), std::logic_error);

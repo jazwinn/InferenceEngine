@@ -76,4 +76,8 @@ namespace cuda{
 
     template <typename T>
     void LaunchSoftMaxDevice(const T* in, T* out, size_t outer, size_t reduced, size_t inner);
+
+    template <typename T>
+    void LaunchRoPEDevice(const T* in, T* out, const T* cos, const T* sin,
+                          size_t rows, size_t length, size_t half, size_t start_pos);
 }

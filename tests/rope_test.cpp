@@ -74,7 +74,7 @@ RopeScaling Llama3Scaling() {
 }
 
 double AngleAtPositionOne(const RotaryEmbedding<double>& rope, size_t i) {
-    return std::atan2(rope.sin(1, i), rope.cos(1, i));
+    return std::atan2((*rope.sin)(1, i), (*rope.cos)(1, i));
 }
 
 double Unscaled(size_t i) {
@@ -88,8 +88,8 @@ TEST(RotaryEmbeddingConstruction, TablesHaveOneRowPerPositionAndOneColumnPerPair
 
     EXPECT_EQ(rope.headDim, 8u);
     EXPECT_EQ(rope.seq, 12u);
-    EXPECT_EQ(rope.cos.Shape(), (std::vector<size_t>{12, 4}));
-    EXPECT_EQ(rope.sin.Shape(), (std::vector<size_t>{12, 4}));
+    EXPECT_EQ(rope.cos->Shape(), (std::vector<size_t>{12, 4}));
+    EXPECT_EQ(rope.sin->Shape(), (std::vector<size_t>{12, 4}));
 }
 
 TEST(RotaryEmbeddingConstruction, TablesFollowTheFrequencyFormula) {
@@ -99,8 +99,8 @@ TEST(RotaryEmbeddingConstruction, TablesFollowTheFrequencyFormula) {
         for (size_t p = 0; p < 20; ++p)
             for (size_t i = 0; i < 4; ++i) {
                 const double angle = static_cast<double>(p) * std::pow(theta, -2.0 * static_cast<double>(i) / 8.0);
-                EXPECT_NEAR(rope.cos(p, i), std::cos(angle), kTol);
-                EXPECT_NEAR(rope.sin(p, i), std::sin(angle), kTol);
+                EXPECT_NEAR((*rope.cos)(p, i), std::cos(angle), kTol);
+                EXPECT_NEAR((*rope.sin)(p, i), std::sin(angle), kTol);
             }
     }
 }
@@ -108,10 +108,10 @@ TEST(RotaryEmbeddingConstruction, TablesFollowTheFrequencyFormula) {
 TEST(RotaryEmbeddingConstruction, FirstPairTurnsOneRadianPerPosition) {
     RotaryEmbedding<float> rope(4, 4);
 
-    EXPECT_NEAR(rope.cos(1, 0), std::cos(1.0), kTol);
-    EXPECT_NEAR(rope.sin(1, 0), std::sin(1.0), kTol);
-    EXPECT_NEAR(rope.cos(1, 1), std::cos(0.01), kTol);
-    EXPECT_NEAR(rope.sin(1, 1), std::sin(0.01), kTol);
+    EXPECT_NEAR((*rope.cos)(1, 0), std::cos(1.0), kTol);
+    EXPECT_NEAR((*rope.sin)(1, 0), std::sin(1.0), kTol);
+    EXPECT_NEAR((*rope.cos)(1, 1), std::cos(0.01), kTol);
+    EXPECT_NEAR((*rope.sin)(1, 1), std::sin(0.01), kTol);
 }
 
 TEST(RotaryEmbeddingConstruction, RejectsInvalidArguments) {
@@ -239,8 +239,8 @@ TEST(RotaryEmbeddingScaling, NoneLeavesTheTablesUnchanged) {
     RotaryEmbedding<float> plain(8, 16, 500000.0);
     RotaryEmbedding<float> none(8, 16, 500000.0, RopeScaling{});
 
-    ExpectNear(none.cos, plain.cos);
-    ExpectNear(none.sin, plain.sin);
+    ExpectNear(*none.cos, *plain.cos);
+    ExpectNear(*none.sin, *plain.sin);
 }
 
 TEST(RotaryEmbeddingScaling, Llama3MatchesHuggingFaceInverseFrequencies) {

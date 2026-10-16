@@ -67,12 +67,28 @@ namespace nn::transformer{
                 throw std::out_of_range("RotaryEmbedding: positions exceed max_seq.");
             }
 
-            x.RequireCPU("RotaryEmbedding");
             const Tensor<T> src = x.Contiguous();
-            Tensor<T> out(shape);
-
+            Tensor<T> out(shape, src.GetDevice());
             const size_t half = headDim / 2;
             const size_t rows = shape[0] * shape[1];
+
+#ifdef IE_ENABLE_CUDA
+            if(x.IsCUDA()){
+                if (!cos->IsCUDA() || !sin->IsCUDA()) {
+                    throw std::invalid_argument("RotaryEmbedding (CUDA): cos/sin tables are not on CUDA; call To(Device::CUDA).");
+                }
+
+                cuda::LaunchRoPEDevice(src.Data(), out.Data(), cos->Data(), sin->Data(), rows, length, half, start_pos);
+
+                return out;
+            }
+#endif
+            if (cos->IsCUDA() || sin->IsCUDA()) {
+                throw std::invalid_argument("RotaryEmbedding: input is on CPU but cos/sin tables are on CUDA.");
+            }
+
+
+
             const T* in = src.Data();
             T* dst = out.Data();
             const T* cosData = cos->Data();
