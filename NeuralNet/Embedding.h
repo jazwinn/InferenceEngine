@@ -46,18 +46,28 @@ namespace nn
                 throw std::invalid_argument("Embedding: indices must not be empty.");
             }
 
-            indices.RequireCPU("Embedding");
-            weight->RequireCPU("Embedding");
-
             const size_t rows = NumEmbeddings();
             const size_t dim = EmbeddingDim();
-
             std::vector<size_t> shape = indices.Shape();
             shape.push_back(dim);
-            Tensor<T> output(shape);
 
             const Tensor<Index> ids = indices.Contiguous();
             const Tensor<T> table = weight->Contiguous();
+
+#ifdef IE_ENABLE_CUDA
+            if (indices.IsCUDA() || weight->IsCUDA()) {
+                if (!indices.IsCUDA() || !weight->IsCUDA()) {
+                    throw std::invalid_argument("Embedding (CUDA): indices and table on different devices.");
+                }
+                Tensor<T> output(shape, tensor::Device::CUDA);
+                cuda::LaunchEmbeddingLookUpDevice(ids.Data(), output.Data(), table.Data(), ids.Size(), rows, dim);
+                return output;
+            }
+#endif
+
+            indices.RequireCPU("Embedding");
+            weight->RequireCPU("Embedding");
+            Tensor<T> output(shape);
             const T *source = table.Data();
             T *destination = output.Data();
 

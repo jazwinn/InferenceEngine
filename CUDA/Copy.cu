@@ -23,6 +23,28 @@ namespace cuda{
         dst[off[1]] = src[off[0]];
     }
 
+    template <typename T, typename Index>
+    __global__ void EmbeddingLookUpKernel(const Index* ids, T* out, const T* table, size_t rows, size_t dim, size_t size){
+        size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if(i < size){
+            const size_t row = i / dim;
+            const size_t col = i % dim;
+            const size_t id = static_cast<size_t>(ids[row]);
+            out[i] = id < rows ? table[id * dim + col] : T(0);
+        }
+    }
+
+    template <typename T, typename Index>
+    void LaunchEmbeddingLookUpDevice(const Index* ids, T* out, const T* table, size_t num_ids, size_t rows, size_t dim){
+        const size_t size = num_ids * dim;
+        if(size == 0) return;
+
+        constexpr size_t threads = 256;
+        EmbeddingLookUpKernel<<<CeilDiv(size, threads), threads>>>(ids, out, table, rows, dim, size);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
     template <typename T>
     void LaunchStridedCopyDevice(const T* src, T* dst,
                                  const std::vector<size_t>& shape,
@@ -40,4 +62,13 @@ namespace cuda{
     }
 
     FOR_EACH_ANY_TYPE(INSTANTIATE_STRIDED_COPY)
+
+#define INSTANTIATE_EMBEDDING_FOR_INDEX(T, Index) \
+    template void LaunchEmbeddingLookUpDevice<T, Index>(const Index*, T*, const T*, size_t, size_t, size_t);
+#define INSTANTIATE_EMBEDDING(T) \
+    INSTANTIATE_EMBEDDING_FOR_INDEX(T, int) \
+    INSTANTIATE_EMBEDDING_FOR_INDEX(T, int64_t) \
+    INSTANTIATE_EMBEDDING_FOR_INDEX(T, size_t)
+
+    FOR_EACH_TYPE(INSTANTIATE_EMBEDDING)
 }

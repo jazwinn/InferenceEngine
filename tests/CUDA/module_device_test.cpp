@@ -260,10 +260,4 @@ TEST(SoftmaxModuleCUDA, ForwardMatchesCPU) {
     for (size_t i = 0; i < actual.size(); ++i) EXPECT_NEAR(actual[i], expected[i], 1e-6f) << "at index " << i;
 }
 
-TEST(CPUOnlyModules, EmbeddingThrowsOnCUDAIndicesOrTable) {
-    nn::Embedding<float> embedding(10, 4);
-    EXPECT_THROW(embedding.Forward(Tensor<int64_t>({3}, Device::CUDA)), std::logic_error);
-    embedding.To(Device::CUDA);
-    EXPECT_THROW(embedding.Forward(Tensor<int64_t>({3})), std::logic_error);
-}
 

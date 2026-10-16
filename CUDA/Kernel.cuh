@@ -34,6 +34,9 @@ namespace cuda{
                                  const std::vector<size_t>& src_stride,
                                  const std::vector<size_t>& dst_stride);
 
+    template <typename T, typename Index>
+    void LaunchEmbeddingLookUpDevice(const Index* ids, T* out, const T* table, size_t num_ids, size_t rows, size_t dim);
+
     template <typename T>
     void LaunchActivationDevice(const T* in, T* out, size_t size, Activation act);
 
