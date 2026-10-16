@@ -30,9 +30,16 @@ namespace nn{
                     *param = param->To(device);
                 }
             }
+
             for (const auto& [name, submodule] : m_submodules) {
                 if(submodule){
                     submodule->To(device);
+                }
+            }
+
+            for (const auto& [name, buffer] : m_buffer) {
+                if(buffer){
+                    *buffer = buffer->To(device);
                 }
             }
         }
@@ -45,6 +52,10 @@ namespace nn{
             Register(m_submodules, name, std::move(submodule));
         }
 
+        void RegisterBuffer(const std::string& name, std::shared_ptr<Tensor<T>> buffer){
+            Register(m_buffer, name, std::move(buffer));
+        }
+
         std::vector<NamedParameter> NamedParameters(const std::string& prefix = "") const {
             std::vector<NamedParameter> named;
             for (const auto& [name, param] : m_parameters) {
@@ -52,6 +63,18 @@ namespace nn{
             }
             for (const auto& [name, submodule] : m_submodules) {
                 auto sub_named = submodule->NamedParameters(prefix + name + ".");
+                named.insert(named.end(), sub_named.begin(), sub_named.end());
+            }
+            return named;
+        }
+
+        std::vector<NamedParameter> NamedBuffers(const std::string& prefix = "") const {
+            std::vector<NamedParameter> named;
+            for (const auto& [name, buffer] : m_buffer) {
+                named.emplace_back(prefix + name, buffer);
+            }
+            for (const auto& [name, submodule] : m_submodules) {
+                auto sub_named = submodule->NamedBuffers(prefix + name + ".");
                 named.insert(named.end(), sub_named.begin(), sub_named.end());
             }
             return named;
@@ -79,5 +102,6 @@ namespace nn{
 
         std::vector<std::pair<std::string, std::shared_ptr<Tensor<T>>>> m_parameters;
         std::vector<std::pair<std::string, std::shared_ptr<Module<T>>>> m_submodules;
+        std::vector<std::pair<std::string, std::shared_ptr<Tensor<T>>>> m_buffer;
     };
 }
