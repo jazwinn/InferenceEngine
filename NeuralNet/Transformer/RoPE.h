@@ -2,25 +2,29 @@
 
 #include <cmath>
 #include <cstddef>
+#include <memory>
 #include <stdexcept>
 
 #include "Tensor/Tensor.h"
+#include "NeuralNet/Module.h"
 #include "NeuralNet/Transformer/TransformerConfig.h"
 
 namespace nn::transformer{
 
     using tensor::Tensor;
+    using nn::Module;
     using nn::transformer::config::RopeScaling;
     using nn::transformer::config::RopeScalingType;
 
     template <typename T = float>
-    class RotaryEmbedding{
+    class RotaryEmbedding : public Module<T>
+    {
     public:
         RotaryEmbedding(size_t head_dim, size_t max_seq, double theta = 10000.0, RopeScaling scaling = {}):
             headDim(ValidatedHeadDim(head_dim)),
             seq(max_seq > 0 ? max_seq : throw std::invalid_argument("RotaryEmbedding: max_seq must be greater than zero.")),
-            cos({seq, headDim / 2}),
-            sin({seq, headDim / 2})
+            cos(std::make_shared<Tensor<T>>(std::vector<size_t>{seq, headDim / 2})),
+            sin(std::make_shared<Tensor<T>>(std::vector<size_t>{seq, headDim / 2}))
         {
             if (!(theta > 0.0))
             {
@@ -28,9 +32,12 @@ namespace nn::transformer{
             }
             ValidateScaling(scaling);
 
+            this->RegisterBuffer("cos", cos);
+            this->RegisterBuffer("sin", sin);
+
             const size_t half = headDim / 2;
-            T* cosData = cos.Data();
-            T* sinData = sin.Data();
+            T* cosData = cos->Data();
+            T* sinData = sin->Data();
             for (size_t i = 0; i < half; ++i)
             {
                 const double freq = Scaled(std::pow(theta, -2.0 * static_cast<double>(i) / static_cast<double>(headDim)), scaling);
@@ -68,8 +75,8 @@ namespace nn::transformer{
             const size_t rows = shape[0] * shape[1];
             const T* in = src.Data();
             T* dst = out.Data();
-            const T* cosData = cos.Data();
-            const T* sinData = sin.Data();
+            const T* cosData = cos->Data();
+            const T* sinData = sin->Data();
 
             for (size_t r = 0; r < rows; ++r)
             {
@@ -92,8 +99,8 @@ namespace nn::transformer{
 
         size_t headDim;
         size_t seq;
-        Tensor<T> cos;
-        Tensor<T> sin;
+        std::shared_ptr<Tensor<T>> cos;
+        std::shared_ptr<Tensor<T>> sin;
 
     private:
         static size_t ValidatedHeadDim(size_t head_dim)
