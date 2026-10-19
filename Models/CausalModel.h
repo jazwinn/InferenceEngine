@@ -64,7 +64,7 @@ namespace models{
             if(wpe != nullptr){
                 Tensor<int64_t> positions({seq});
                 for (size_t i = 0; i < seq; ++i) positions(i) = static_cast<int64_t>(first + i);
-                x = x + wpe->Forward(positions);
+                x = x + wpe->Forward(positions.To(wpe->weight->GetDevice()));
             }
 
             Tensor<T> h = transformer->Forward(x, cache, Tensor<bool>(), config.causal);
@@ -72,7 +72,7 @@ namespace models{
             if(lm_head != nullptr){
                 return lm_head->Forward(h);
             }
-            return tensor::MatMul(h, wte->weight->Transpose());
+            return tensor::Linear(h, *wte->weight);
         }
 
         TransformerConfig config;
