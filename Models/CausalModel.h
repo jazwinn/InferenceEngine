@@ -75,6 +75,12 @@ namespace models{
             return tensor::Linear(h, *wte->weight);
         }
 
+
+        KVCache<T> MakeCache(size_t batch, size_t max_seq) const {
+            return KVCache<T>(config.num_layers, batch, config.KVHeads(), max_seq, config.HeadDim(),
+                            wte->weight->GetDevice());
+        }
+
         TransformerConfig config;
         std::shared_ptr<Decoder<T>> transformer;
         std::shared_ptr<Embedding<T>> wte;

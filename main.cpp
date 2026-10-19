@@ -29,9 +29,11 @@ int main() {
     std::vector<Message> history = {{"system", "You are a helpful assistant."}};
 
     CausalModel<float> model(models::llama::Llama32_1B());
-    const size_t contextSize = std::min<size_t>(2048, model.config.max_seq_len);
-    KVCache<float> cache(model.config.num_layers, 1, model.config.KVHeads(), contextSize, model.config.HeadDim());
     LoadWeights<float>(model, modelDir + "model.safetensors", models::llama::Rules());
+    const tensor::Device device = tensor::Device::CPU;
+    model.To(device);
+    const size_t contextSize = std::min<size_t>(2048, model.config.max_seq_len);
+    KVCache<float> cache = model.MakeCache(1, contextSize);
 
     Greedy<float> greedy;
 
@@ -58,12 +60,12 @@ int main() {
       tensor::Tensor<int64_t> prompt({1, ids.size()});
       for (size_t i = 0; i < ids.size(); ++i) prompt(0, i) = ids[i];
 
-      tensor::Tensor<float> logits = model.Forward(prompt, &cache);
+      tensor::Tensor<float> logits = model.Forward(prompt.To(device), &cache);
       size_t last = ids.size() - 1;
 
       std::string answer;
       while (ids.size() < contextSize) {
-        const int64_t best = static_cast<int64_t>(greedy.Pick(logits.Row(0).Row(last)));
+        const int64_t best = static_cast<int64_t>(greedy.Pick(logits.Row(0).Row(last).To(tensor::Device::CPU)));
         if (model.config.IsEos(best)) break;
         ids.push_back(best);
 
@@ -75,7 +77,7 @@ int main() {
 
         tensor::Tensor<int64_t> next({1, 1});
         next(0, 0) = best;
-        logits = model.Forward(next, &cache);
+        logits = model.Forward(next.To(device), &cache);
         last = 0;
       }
 

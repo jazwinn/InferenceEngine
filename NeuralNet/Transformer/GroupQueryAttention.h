@@ -81,6 +81,10 @@ namespace nn::transformer{
 
             if (cache)
             {
+                if(cache->k.GetDevice() != K.GetDevice() || cache->v.GetDevice() != V.GetDevice()){
+                    throw std::invalid_argument("GroupQueryAttention: KV cache is on a different device from the model.");
+                }
+
                 CopyInto(K, cache->k.Slice(2, cache_len, seq));
                 CopyInto(V, cache->v.Slice(2, cache_len, seq));
                 K = cache->k.Slice(2, 0, cache_len + seq);

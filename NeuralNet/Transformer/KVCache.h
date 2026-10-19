@@ -9,6 +9,7 @@
 namespace nn::transformer{
 
     using tensor::Tensor;
+    using tensor::Device;
 
     template <typename T>
     struct KVLayer{
@@ -21,16 +22,16 @@ namespace nn::transformer{
     class KVCache{
     public:
 
-        KVCache(size_t layers, size_t batch, size_t kv_heads, size_t max_seq, size_t head_dim)
-        : m_maxSeq(max_seq)
+        KVCache(size_t layers, size_t batch, size_t kv_heads, size_t max_seq, size_t head_dim, Device device = Device::CPU)
+        : m_maxSeq(max_seq), m_device(device)
         {
             if (layers == 0 || batch == 0 || kv_heads == 0 || max_seq == 0 || head_dim == 0) {
                 throw std::invalid_argument("KVCache: every dimension must be greater than zero.");
             }
             m_KVLayers.reserve(layers);
             for (size_t i = 0; i < layers; ++i) {
-                m_KVLayers.push_back({ Tensor<T>({batch, kv_heads, max_seq, head_dim}),
-                                     Tensor<T>({batch, kv_heads, max_seq, head_dim}) });
+                m_KVLayers.push_back({ Tensor<T>({batch, kv_heads, max_seq, head_dim}, m_device),
+                                     Tensor<T>({batch, kv_heads, max_seq, head_dim}, m_device) });
             }
         }
 
@@ -60,9 +61,12 @@ namespace nn::transformer{
         size_t Length()    const noexcept { return m_length; }
         size_t MaxLength() const noexcept { return m_maxSeq; }
         size_t Layers()    const noexcept { return m_KVLayers.size(); }
+        Device GetDevice() const noexcept { return m_device; }
+
     private:
         std::vector<KVLayer<T>> m_KVLayers;
         size_t m_maxSeq;
         size_t m_length = 0;
+        Device m_device;
     };
 }
