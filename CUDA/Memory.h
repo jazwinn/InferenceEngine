@@ -8,6 +8,9 @@ namespace cuda{
 
     void* DeviceAlloc(size_t bytes);
     void DeviceFree(void* ptr);
+    void EmptyCache();
+    size_t CachedBytes();
+    size_t AllocatedBytes();
     void CopyHostToDevice(void* dst, const void* src, size_t bytes);
     void CopyDeviceToHost(void* dst, const void* src, size_t bytes);
     void CopyDeviceToDevice(void* dst, const void* src, size_t bytes);
