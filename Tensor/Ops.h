@@ -170,16 +170,6 @@ namespace tensor {
         result_shape.push_back(rows);
         result_shape.push_back(cols);
 
-        
-#ifdef IE_ENABLE_CUDA
-        if (A.IsCUDA()) {
-            return detail::MatMulCUDA(A, B, result_shape, rows, inner, cols);
-        }
-#endif
-        
-
-        Tensor<T> result(result_shape);
-
         const std::vector<size_t> a_batch_stride = detail::BroadcastStrides(
             a_batch, std::vector<size_t>(a_stride.begin(), a_stride.end() - 2), batch);
         const std::vector<size_t> b_batch_stride = detail::BroadcastStrides(
@@ -189,6 +179,16 @@ namespace tensor {
         const size_t a_col_stride = a_stride[a_shape.size() - 1];
         const size_t b_row_stride = b_stride[b_shape.size() - 2];
         const size_t b_col_stride = b_stride[b_shape.size() - 1];
+
+#ifdef IE_ENABLE_CUDA
+        if (A.IsCUDA()) {
+            return detail::MatMulCUDA(A, B, result_shape, batch, a_batch_stride, b_batch_stride,
+                                      rows, inner, cols,
+                                      a_row_stride, a_col_stride, b_row_stride, b_col_stride);
+        }
+#endif
+
+        Tensor<T> result(result_shape);
 
         const T* a_data = A.Data();
         const T* b_data = B.Data();

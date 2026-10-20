@@ -14,6 +14,14 @@ namespace cuda{
     void LaunchMatMul(const DeviceBuffer<T>& dA, const DeviceBuffer<T>& dB, DeviceBuffer<T>& dC, size_t M, size_t N, size_t K);
 
     template <typename T>
+    void LaunchMatMulDevice(const T* A, const T* B, T* C,
+                                const std::vector<size_t>& batch,
+                                const std::vector<size_t>& a_batch_stride,
+                                const std::vector<size_t>& b_batch_stride,
+                                size_t rows, size_t inner, size_t cols,
+                                size_t a_rs, size_t a_cs, size_t b_rs, size_t b_cs);
+                                
+    template <typename T>
     void LaunchMatMulDevice(const T* dA, const T* dB, T* dC, size_t M, size_t N, size_t K);
 
     template <typename T>

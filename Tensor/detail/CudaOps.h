@@ -28,19 +28,61 @@ namespace tensor::detail {
     template <typename T>
     Tensor<T> MatMulCUDA(const Tensor<T>& A, const Tensor<T>& B,
                          const std::vector<size_t>& result_shape,
-                         size_t rows, size_t inner, size_t cols) {
+                         const std::vector<size_t>& batch,
+                         const std::vector<size_t>& a_batch_stride,
+                         const std::vector<size_t>& b_batch_stride,
+                         size_t rows, size_t inner, size_t cols,
+                         size_t a_rs, size_t a_cs, size_t b_rs, size_t b_cs) {
         if (!A.IsCUDA() || !B.IsCUDA()) {
             throw std::invalid_argument("MatMul (CUDA): operands must be on CUDA.");
         }
-        if (A.Rank() != 2 || B.Rank() != 2) {
-            throw std::logic_error("MatMul (CUDA): only 2D operands are supported.");
-        }
         Tensor<T> result(result_shape, Device::CUDA);
 
-        const Tensor<T> a = A.Contiguous();
-        const Tensor<T> b = B.Contiguous();
-        cuda::LaunchMatMulDevice(a.Data(), b.Data(), result.Data(), rows, inner, cols);
+        cuda::LaunchMatMulDevice(A.Data(), B.Data(), result.Data(),
+                                 batch, a_batch_stride, b_batch_stride,
+                                 rows, inner, cols,
+                                 a_rs, a_cs, b_rs, b_cs);
         return result;
+    }
+
+    template <typename T>
+    Tensor<T> MatMulCUDA(const Tensor<T>& A, const Tensor<T>& B) {
+        if (A.Rank() < 2 || B.Rank() < 2) {
+            throw std::invalid_argument("MatMul (CUDA): operands must have at least two dimensions.");
+        }
+        if (!A.IsCUDA() || !B.IsCUDA()) {
+            throw std::invalid_argument("MatMul (CUDA): operands must be on CUDA.");
+        }
+
+        const std::vector<size_t>& a_shape = A.Shape();
+        const std::vector<size_t>& b_shape = B.Shape();
+        const std::vector<size_t>& a_stride = A.Strides();
+        const std::vector<size_t>& b_stride = B.Strides();
+
+        const size_t rows = a_shape[a_shape.size() - 2];
+        const size_t inner = a_shape[a_shape.size() - 1];
+        const size_t cols = b_shape[b_shape.size() - 1];
+        if (inner != b_shape[b_shape.size() - 2]) {
+            throw std::invalid_argument("MatMul (CUDA): inner dimensions must match.");
+        }
+
+        const std::vector<size_t> a_batch(a_shape.begin(), a_shape.end() - 2);
+        const std::vector<size_t> b_batch(b_shape.begin(), b_shape.end() - 2);
+        const std::vector<size_t> batch = BroadcastShape(a_batch, b_batch);
+
+        const std::vector<size_t> a_batch_stride = BroadcastStrides(
+            a_batch, std::vector<size_t>(a_stride.begin(), a_stride.end() - 2), batch);
+        const std::vector<size_t> b_batch_stride = BroadcastStrides(
+            b_batch, std::vector<size_t>(b_stride.begin(), b_stride.end() - 2), batch);
+
+        std::vector<size_t> result_shape = batch;
+        result_shape.push_back(rows);
+        result_shape.push_back(cols);
+
+        return MatMulCUDA(A, B, result_shape, batch, a_batch_stride, b_batch_stride,
+                          rows, inner, cols,
+                          a_stride[a_shape.size() - 2], a_stride[a_shape.size() - 1],
+                          b_stride[b_shape.size() - 2], b_stride[b_shape.size() - 1]);
     }
 
     template <typename T>

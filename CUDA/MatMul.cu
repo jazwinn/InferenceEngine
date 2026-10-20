@@ -3,8 +3,10 @@
 #include "CUDA/Kernel.cuh"
 #include "CUDA/Memory.h"
 #include "CUDA/detail/common.cuh"
+#include "CUDA/detail/Layout.cuh"
 
 #define INSTANTIATE_MATMUL(T) \
+    template void LaunchMatMulDevice<T>(const T*, const T*, T*, const std::vector<size_t>&, const std::vector<size_t>&, const std::vector<size_t>&, size_t, size_t, size_t, size_t, size_t, size_t, size_t); \
     template void LaunchMatMulDevice<T>(const T*, const T*, T*, size_t, size_t, size_t); \
     template void LaunchMatMulHost<T>(const T*, const T*, T*, size_t, size_t, size_t); \
     template void LaunchMatMul<T>(const DeviceBuffer<T>&, const DeviceBuffer<T>&, DeviceBuffer<T>&, size_t, size_t, size_t);
@@ -14,29 +16,65 @@ namespace cuda{
     
     //TODO: WMMA
     template<typename T>
-    __global__ void MatMulKernel(const T* A, const T* B, T* C, size_t M, size_t N, size_t K){
-        
-        size_t row = blockIdx.y * blockDim.y + threadIdx.y;
-        size_t col = blockIdx.x * blockDim.x + threadIdx.x; 
+    __global__ void MatMulKernel(const T* A, const T* B, T* C, StridedLayout<2> layout,
+                                 size_t rows, size_t inner, size_t cols,
+                                 size_t a_rs, size_t a_cs, size_t b_rs, size_t b_cs){
 
-        if(row < M && col < K){
-            T sum = 0.f;
+        const size_t row = blockIdx.y * blockDim.y + threadIdx.y;
+        const size_t col = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t z = blockIdx.z;
 
-            for(size_t n = 0; n < N; ++n){
-                sum += *(A + row * N + n) * *(B + n * K + col); 
-            }
+        if (row >= rows || col >= cols) return;
 
-            C[row * K + col] = sum;
+        size_t off[2];
+        ViewOffsets(layout, z, off);
+
+        const T* a = A + off[0] + row * a_rs;
+        const T* b = B + off[1] + col * b_cs;
+
+        T sum = T(0);
+        for (size_t n = 0; n < inner; ++n) {
+            sum += a[n * a_cs] * b[n * b_rs];
         }
+
+        C[z * rows * cols + row * cols + col] = sum;
+    }
+
+    template <typename T>
+    void LaunchMatMulDevice(const T* A, const T* B, T* C,
+                                const std::vector<size_t>& batch,
+                                const std::vector<size_t>& a_batch_stride,
+                                const std::vector<size_t>& b_batch_stride,
+                                size_t rows, size_t inner, size_t cols,
+                                size_t a_rs, size_t a_cs, size_t b_rs, size_t b_cs){
+
+        size_t batch_count = 0;
+        const StridedLayout<2> layout = MakeStridedLayout("BatchedMatMul", batch_count, batch, a_batch_stride, b_batch_stride);
+
+        if (batch_count == 0 || rows == 0 || cols == 0) return;
+        
+        static const size_t max_grid_z = []{
+            int device_id = 0;
+            CUDA_CHECK(cudaGetDevice(&device_id));
+            int max_z = 0;
+            CUDA_CHECK(cudaDeviceGetAttribute(&max_z, cudaDevAttrMaxGridDimZ, device_id));
+            return static_cast<size_t>(max_z);
+        }();
+
+        if (batch_count > max_grid_z) {
+            throw std::invalid_argument("BatchedMatMul: batch count exceeds the grid z limit");
+        }
+
+        dim3 block(16, 16);
+        dim3 grid(CeilDiv(cols, block.x), CeilDiv(rows, block.y), static_cast<unsigned int>(batch_count));
+
+        MatMulKernel<<<grid, block>>>(A, B, C, layout, rows, inner, cols, a_rs, a_cs, b_rs, b_cs);
+        CUDA_CHECK(cudaGetLastError());
     }
 
     template <typename T>
     void LaunchMatMulDevice(const T* dA, const T* dB, T* dC, size_t M, size_t N, size_t K){
-        dim3 block(16, 16);
-        dim3 grid(CeilDiv(K, block.x), CeilDiv(M, block.y));
-
-        MatMulKernel<<<grid, block>>>(dA, dB, dC, M, N, K);
-        CUDA_CHECK(cudaGetLastError());
+        LaunchMatMulDevice(dA, dB, dC, {}, {}, {}, M, N, K, N, 1, K, 1);
     }
 
     template <typename T>
