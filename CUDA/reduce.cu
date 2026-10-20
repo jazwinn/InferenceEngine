@@ -93,5 +93,5 @@ namespace cuda{
         CUDA_CHECK(cudaGetLastError());
     }
 
-    FOR_EACH_TYPE(INSTANTIATE_OPS);
+    FOR_EACH_FLOAT_TYPE(INSTANTIATE_OPS);
 }

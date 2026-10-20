@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <cstddef>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
+
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -16,8 +18,11 @@
         }                                                                 \
     } while (0)
 
-#define FOR_EACH_TYPE(X) X(float) X(double)
-#define FOR_EACH_ANY_TYPE(X) FOR_EACH_TYPE(X) X(bool) X(int) X(int64_t) X(size_t)
+#define FOR_EACH_HALF_TYPE(X)    X(__half) X(__nv_bfloat16)
+#define FOR_EACH_FLOAT_TYPE(X)   X(float) X(double)
+#define FOR_EACH_INT_TYPE(X)     X(int) X(int64_t) X(size_t)
+#define FOR_EACH_NUMERIC_TYPE(X) FOR_EACH_FLOAT_TYPE(X) FOR_EACH_INT_TYPE(X)
+#define FOR_EACH_ANY_TYPE(X)     FOR_EACH_NUMERIC_TYPE(X) X(bool)
 
 
 namespace cuda{

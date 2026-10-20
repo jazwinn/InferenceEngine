@@ -10,6 +10,13 @@
 #define INSTANTIATE_STRIDED_COPY(T) \
     template void LaunchStridedCopyDevice<T>(const T*, T*, const std::vector<size_t>&, const std::vector<size_t>&, const std::vector<size_t>&);
 
+#define INSTANTIATE_EMBEDDING_FOR_INDEX(T, Index) \
+    template void LaunchEmbeddingLookUpDevice<T, Index>(const Index*, T*, const T*, size_t, size_t, size_t);
+#define INSTANTIATE_EMBEDDING(T) \
+    INSTANTIATE_EMBEDDING_FOR_INDEX(T, int) \
+    INSTANTIATE_EMBEDDING_FOR_INDEX(T, int64_t) \
+    INSTANTIATE_EMBEDDING_FOR_INDEX(T, size_t)
+
 namespace cuda{
 
     template <typename T>
@@ -62,13 +69,5 @@ namespace cuda{
     }
 
     FOR_EACH_ANY_TYPE(INSTANTIATE_STRIDED_COPY)
-
-#define INSTANTIATE_EMBEDDING_FOR_INDEX(T, Index) \
-    template void LaunchEmbeddingLookUpDevice<T, Index>(const Index*, T*, const T*, size_t, size_t, size_t);
-#define INSTANTIATE_EMBEDDING(T) \
-    INSTANTIATE_EMBEDDING_FOR_INDEX(T, int) \
-    INSTANTIATE_EMBEDDING_FOR_INDEX(T, int64_t) \
-    INSTANTIATE_EMBEDDING_FOR_INDEX(T, size_t)
-
-    FOR_EACH_TYPE(INSTANTIATE_EMBEDDING)
+    FOR_EACH_FLOAT_TYPE(INSTANTIATE_EMBEDDING)
 }

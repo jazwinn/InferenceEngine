@@ -59,6 +59,6 @@ namespace cuda{
         dY.CopyToHost(Y, M * out);
     }
 
-    FOR_EACH_TYPE(INSTANTIATE_LINEAR)
+    FOR_EACH_FLOAT_TYPE(INSTANTIATE_LINEAR)
 
 }
