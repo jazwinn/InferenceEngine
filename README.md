@@ -1,10 +1,12 @@
 # InferenceEngine
 
-A transformer inference engine written from scratch in C++20, with no ML dependencies. It builds decoder-only models from a config, loads Hugging Face `.safetensors` checkpoints, tokenizes with the model's own `tokenizer.json`, formats chats with the model's own chat template, and generates text. It runs GPT-2 (124M) and Llama 3.2 1B Instruct.
+A transformer inference engine written from scratch in C++20, with no ML dependencies. It builds decoder-only models from a config, loads Hugging Face `.safetensors` checkpoints, tokenizes with the model's own `tokenizer.json`, formats chats with the model's own chat template, and generates text, on the CPU or on an NVIDIA GPU through its own CUDA backend. It runs GPT-2 (124M) and Llama 3.2 1B Instruct.
 
 ## Status
 
-Llama 3.2 1B Instruct chats end to end: chat template → tokenize → forward pass with KV cache → greedy decode → streamed detokenize, with multi-turn history. The output is correct but slow, because `MatMul` is still a naive single-threaded loop (see Performance in the roadmap).
+Llama 3.2 1B Instruct chats end to end: chat template → tokenize → forward pass with KV cache → greedy decode → streamed detokenize, with multi-turn history.
+
+The whole forward pass now runs on CUDA: embeddings, norms, linear layers, RoPE, the KV cache, attention and the output head. On small Llama-style and GPT-2-style models, GPU logits match the CPU path through a prompt and several decode steps. The GPU kernels are still naive (one thread per output element, no shared-memory tiling), and the weights are fp32, so Llama 3.2 1B uses about 4.9 GB of a 6 GB card. The CPU path is correct but slow, because its `MatMul` is a single-threaded loop. See Performance in the roadmap.
 
 ## Layout
 
@@ -18,7 +20,8 @@ Llama 3.2 1B Instruct chats end to end: chat template → tokenize → forward p
 | `Generation/` | `LogitsProcessor` pipeline, `Temperature`, `Greedy` sampler |
 | `Serialize/` | `.safetensors` reader (F32/F64/F16/BF16/int/bool), reflection-based JSON loading |
 | `Reflection/` | `REFLECTABLE` macro: member names and iteration for JSON config structs |
-| `tests/` | 803 GoogleTest cases |
+| `CUDA/` | CUDA kernels and launchers (elementwise and strided ops, fill and masked fill, reductions, softmax, activations, RoPE, embedding lookup, strided copy, linear, batched strided matmul) and a caching device allocator |
+| `tests/` | 1,385 GoogleTest cases, including GPU-versus-CPU checks for every CUDA op and for the full model |
 
 ## Implemented
 
@@ -31,10 +34,11 @@ Llama 3.2 1B Instruct chats end to end: chat template → tokenize → forward p
 - **Chat templates** — renders the model's own Jinja chat template (from `tokenizer_config.json` or `chat_template.jinja`) with [minja](https://github.com/google/minja), including `strftime_now` and a merged system message for templates without a system role. Matches Hugging Face on Qwen2.5, SmolLM2, Gemma 2, Phi-3.5 and Mistral.
 - **Generation** — greedy decoding over a logits-processor pipeline, multiple stop tokens, streamed output, and multi-turn chat that drops the oldest turns to stay within the context window.
 - **Config** — JSON model configs loaded through compile-time reflection.
+- **CUDA backend** — the device is a property of the tensor: `Tensor::To(Device::CUDA)` and `Module::To()` move parameters and registered buffers (such as the RoPE tables), and each op runs on the device of its inputs, throwing on mixed devices. Kernels follow one pattern (an op functor, a kernel templated on it, a launcher that switches on an enum) and work on strided views directly through a shared layout helper, so transposes, slices and broadcasts need no copy. Reductions and softmax use one block per output with a shared `BlockReduce`. Batched `MatMul` takes broadcast batch strides plus row and column strides, so `Q·Kᵀ` over a sliced KV cache with grouped-query broadcasting runs with no copies. A caching allocator reuses freed blocks (rounded to 512 B under 1 MiB and to 2 MiB above, capped at 256 MiB cached), clears the cache and retries on out-of-memory, and rejects double frees. `CausalModel::MakeCache` creates the KV cache on the model's device.
 
 ## Build
 
-Requires CMake 3.21+, a C++20 compiler (MSVC with Visual Studio 2026 or 2022 tested) and vcpkg. vcpkg installs gtest, nlohmann-json and pcre2 from `vcpkg.json`; CMake downloads minja (header-only, pinned by hash) during configure.
+Requires CMake 3.21+, a C++20 compiler (MSVC with Visual Studio 2026 or 2022 tested), vcpkg, and the CUDA Toolkit (13.x tested) for the GPU backend. vcpkg installs gtest, nlohmann-json and pcre2 from `vcpkg.json`; CMake downloads minja (header-only, pinned by hash) during configure.
 
 ```
 cmake --preset default
@@ -45,6 +49,8 @@ ctest --preset debug
 
 With Visual Studio 2022, use `vs2022` and `vs2022-release`/`vs2022-debug` instead.
 
+The CUDA backend is on by default and compiles for the GPU in the build machine (`-arch=native`). To build without it, configure with `-DIE_ENABLE_CUDA=OFF`.
+
 ## Run
 
 `main.cpp` runs Llama 3.2 1B Instruct as a chat. Put these files from [`unsloth/Llama-3.2-1B-Instruct`](https://huggingface.co/unsloth/Llama-3.2-1B-Instruct) (an ungated copy of `meta-llama/Llama-3.2-1B-Instruct`) in `Models/llama3.2-instruct/`:
@@ -53,11 +59,13 @@ With Visual Studio 2022, use `vs2022` and `vs2022-release`/`vs2022-debug` instea
 - `tokenizer.json`
 - `tokenizer_config.json` (holds the chat template)
 
-Then run `build-vs/Release/inference.exe` from the repository root, so the relative paths resolve. Loading peaks at about 10 GB of memory, and with the current `MatMul` the first reply takes many minutes.
+Then run `build-vs/Release/inference.exe` from the repository root, so the relative paths resolve.
+
+The `device` constant in `main.cpp` picks the device, and is set to `tensor::Device::CUDA`. Loading peaks at about 10 GB of host memory. On the GPU, the fp32 weights take about 4.9 GB of device memory; if allocation fails, lower `contextSize`. On the CPU, the first reply takes many minutes.
 
 ## Roadmap
 
-**Performance** — the current bottleneck. Llama 3.2 1B runs correctly but slowly: `MatMul` reaches about 0.075 GFLOP/s on its projections, so a short chat prompt takes roughly 20+ minutes to the first token.
+**Performance** — the current bottleneck. On the CPU, `MatMul` reaches about 0.075 GFLOP/s on Llama 3.2 1B's projections, so a short chat prompt takes roughly 20+ minutes to the first token. The GPU path is correct but its kernels are not yet optimised.
 - [x] KV cache — reuse past keys/values so each step processes one token instead of the whole sequence
 - [ ] `Linear` kernel — `Linear` multiplies by a transposed (strided) weight view, so the inner loop jumps 8–32 KB per step and cannot vectorise; a contiguous row-dot-product kernel is the single biggest win
 - [ ] Multithreading — `MatMul` runs on one core
@@ -65,8 +73,12 @@ Then run `build-vs/Release/inference.exe` from the repository root, so the relat
 - [ ] Last-position-only output projection — prefill currently computes the 128K-vocabulary logits for every prompt position (about 20% of Llama prefill) and uses only the last row
 - [ ] Prefix caching — keep the KV cache across chat turns and encode only the new turn instead of the whole history
 - [ ] Memory — load weights straight into parameters (loading currently peaks at about 2× model size), memory-mapped weights, arena allocation, no allocation in the hot loop
-- [ ] Quantization — int8/int4 weights, BF16/FP16 storage and compute paths
-- [ ] GPU backend (CUDA/Vulkan) behind a device abstraction
+- [ ] Quantization — int8/int4 weights, FP16 storage and full BF16/FP16 compute paths
+- [x] CUDA backend — every op of the forward pass, including attention, on the GPU, with a caching allocator
+- [ ] FlashAttention — fused, tiled attention that never builds the score matrix or a mask tensor, then flash-decoding (split the KV sequence across blocks for single-token steps)
+- [ ] Tiled shared-memory `MatMul`/`Linear` kernels, or cuBLAS
+- [ ] BF16 weights on the GPU — store `Linear` and embedding weights as `__nv_bfloat16` and accumulate in fp32, halving Llama 3.2 1B to about 2.5 GB; needs a mixed-type parameter registry in `Module`
+- [ ] Skip the memset when a kernel overwrites its whole output
 - [ ] Fused RMSNorm/LayerNorm CUDA kernels — one block per row reusing `BlockReduce`; replaces the ~6 launches and 3 full-size temporaries of the composed-op path (about 7N memory traffic down to 2–3N)
 
 **Architectures**
