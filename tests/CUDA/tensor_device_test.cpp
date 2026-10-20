@@ -421,10 +421,12 @@ TEST(TensorCUDAMatMul, NonContiguousOperandIsNotModified) {
     EXPECT_EQ(Values(gb), Values(b));
 }
 
-TEST(TensorCUDAMatMul, BatchedOperandThrows) {
-    Tensor<float> a({2, 2, 3}, Device::CUDA);
-    Tensor<float> b({3, 2}, Device::CUDA);
-    EXPECT_THROW(MatMul(a, b), std::logic_error);
+TEST(TensorCUDAMatMul, BatchedOperandMatchesCPU) {
+    Tensor<float> a = Iota<float>({2, 2, 3});
+    Tensor<float> b = Iota<float>({3, 2});
+    Tensor<float> result = MatMul(a.To(Device::CUDA), b.To(Device::CUDA));
+    EXPECT_EQ(result.Shape(), (std::vector<size_t>{2, 2, 2}));
+    EXPECT_EQ(Values(result), Values(MatMul(a, b)));
 }
 
 TEST(TensorCUDACPUOnly, RequireCPUMessageNamesTheOperation) {

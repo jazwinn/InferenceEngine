@@ -100,7 +100,7 @@ namespace nn::transformer
                     causal_mask(i, j) = true;
                 }
             }
-            scores = scores.MaskedFill(causal_mask, std::numeric_limits<T>::lowest());
+            scores = scores.MaskedFill(causal_mask.To(scores.GetDevice()), std::numeric_limits<T>::lowest());
         }
 
         if (mask.Size() > 0)

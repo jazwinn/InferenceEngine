@@ -20,7 +20,10 @@ using models::Message;
 using models::Tokenizer;
 using nn::transformer::KVCache;
 
+using Precision = float;
+
 int main() {
+
   try {
     const std::string modelDir = "Models/llama3.2-instruct/";
 
@@ -28,14 +31,14 @@ int main() {
     const ChatTemplate chat = ChatTemplate::FromFile(modelDir + "tokenizer_config.json");
     std::vector<Message> history = {{"system", "You are a helpful assistant."}};
 
-    CausalModel<float> model(models::llama::Llama32_1B());
-    LoadWeights<float>(model, modelDir + "model.safetensors", models::llama::Rules());
-    const tensor::Device device = tensor::Device::CPU;
+    CausalModel<Precision> model(models::llama::Llama32_1B());
+    LoadWeights<Precision>(model, modelDir + "model.safetensors", models::llama::Rules());
+    const tensor::Device device = tensor::Device::CUDA;
     model.To(device);
     const size_t contextSize = std::min<size_t>(2048, model.config.max_seq_len);
-    KVCache<float> cache = model.MakeCache(1, contextSize);
+    KVCache<Precision> cache = model.MakeCache(1, contextSize);
 
-    Greedy<float> greedy;
+    Greedy<Precision> greedy;
 
     while (true) {
       std::string input;
@@ -60,7 +63,7 @@ int main() {
       tensor::Tensor<int64_t> prompt({1, ids.size()});
       for (size_t i = 0; i < ids.size(); ++i) prompt(0, i) = ids[i];
 
-      tensor::Tensor<float> logits = model.Forward(prompt.To(device), &cache);
+      tensor::Tensor<Precision> logits = model.Forward(prompt.To(device), &cache);
       size_t last = ids.size() - 1;
 
       std::string answer;
