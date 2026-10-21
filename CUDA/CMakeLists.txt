@@ -9,6 +9,7 @@ file(GLOB CUDA_HEADERS CONFIGURE_DEPENDS
 
 find_package(CUDAToolkit REQUIRED)
 
+
 add_library(cuda_kernels STATIC ${CUDA_SOURCES})
 add_library(InferenceEngine::CUDA ALIAS cuda_kernels)
 
@@ -18,6 +19,7 @@ set_target_properties(cuda_kernels PROPERTIES
 
 target_link_libraries(cuda_kernels PRIVATE
     CUDA::cudart_static
+    CUDA::cublas
 )
 
 target_include_directories(cuda_kernels PUBLIC

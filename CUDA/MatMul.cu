@@ -1,4 +1,7 @@
+#include <limits>
 #include <stdexcept>
+#include <type_traits>
+#include <vector>
 
 #include "CUDA/Kernel.cuh"
 #include "CUDA/Memory.h"
@@ -11,10 +14,72 @@
     template void LaunchMatMulHost<T>(const T*, const T*, T*, size_t, size_t, size_t); \
     template void LaunchMatMul<T>(const DeviceBuffer<T>&, const DeviceBuffer<T>&, DeviceBuffer<T>&, size_t, size_t, size_t);
 
+namespace {
+
+    struct GemmOperand {
+        cublasOperation_t op;
+        int ld;
+        bool ok;
+    };
+    
+    class CublasHandle {
+    public:
+        CublasHandle() { CUBLAS_CHECK(cublasCreate(&m_handle)); }
+        ~CublasHandle() { cublasDestroy(m_handle); }
+        CublasHandle(const CublasHandle&) = delete;
+        CublasHandle& operator=(const CublasHandle&) = delete;
+        cublasHandle_t Get() const { return m_handle; }
+    private:
+        cublasHandle_t m_handle = nullptr;
+    };
+
+    cublasHandle_t Cublas() {
+        static CublasHandle handle;
+        return handle.Get();
+    }
+
+    template <typename T>
+    constexpr cudaDataType_t CudaType() {
+        if constexpr (std::is_same_v<T, __half>)             return CUDA_R_16F;
+        else if constexpr (std::is_same_v<T, float>)         return CUDA_R_32F;
+        else if constexpr (std::is_same_v<T, double>)        return CUDA_R_64F;
+        else if constexpr (std::is_same_v<T, __nv_bfloat16>) return CUDA_R_16BF;
+        else static_assert(sizeof(T) == 0, "CudaType: unsupported type");
+    }
+
+    template <typename In, typename Out = In>
+    void Gemm(cublasOperation_t opB, cublasOperation_t opA, int m, int n, int k,
+              const In* B, int ldb, const In* A, int lda, Out* C, int ldc)
+    {
+        constexpr bool f64 = std::is_same_v<In, double>;
+        using Scale = std::conditional_t<f64, double, float>;
+        const Scale alpha = 1, beta = 0;
+
+        CUBLAS_CHECK(cublasGemmEx(Cublas(), opB, opA, m, n, k, &alpha,
+                                  B, CudaType<In>(), ldb, A, CudaType<In>(), lda, &beta,
+                                  C, CudaType<Out>(), ldc,
+                                  f64 ? CUBLAS_COMPUTE_64F : CUBLAS_COMPUTE_32F,
+                                  CUBLAS_GEMM_DEFAULT));
+    }
+
+    GemmOperand ToGemmOperand(size_t rs, size_t cs, size_t row_count, size_t col_count) {
+        constexpr size_t kMax = static_cast<size_t>(std::numeric_limits<int>::max());
+        if (cs == 1 || col_count == 1) {
+            const size_t ld = row_count == 1 ? col_count : rs;
+            return {CUBLAS_OP_N, static_cast<int>(ld), ld >= col_count && ld >= 1 && ld <= kMax};
+        }
+        if (rs == 1 || row_count == 1) {
+            const size_t ld = col_count == 1 ? row_count : cs;
+            return {CUBLAS_OP_T, static_cast<int>(ld), ld >= row_count && ld >= 1 && ld <= kMax};
+        }
+        return {CUBLAS_OP_N, 0, false};
+    }
+
+}
+
 
 namespace cuda{
-    
-    //TODO: WMMA
+
     template<typename T>
     __global__ void MatMulKernel(const T* A, const T* B, T* C, StridedLayout<2> layout,
                                  size_t rows, size_t inner, size_t cols,
@@ -52,6 +117,19 @@ namespace cuda{
         const StridedLayout<2> layout = MakeStridedLayout("BatchedMatMul", batch_count, batch, a_batch_stride, b_batch_stride);
 
         if (batch_count == 0 || rows == 0 || cols == 0) return;
+
+        constexpr size_t kMax = static_cast<size_t>(std::numeric_limits<int>::max());
+        if (batch_count == 1 && rows <= kMax && inner <= kMax && cols <= kMax) {
+            const GemmOperand b = ToGemmOperand(b_rs, b_cs, inner, cols);
+            const GemmOperand a = ToGemmOperand(a_rs, a_cs, rows, inner);
+            if (a.ok && b.ok) {
+                Gemm(b.op, a.op,
+                    static_cast<int>(cols), static_cast<int>(rows), static_cast<int>(inner),
+                    B, b.ld, A, a.ld, C, static_cast<int>(cols));
+                return;
+            }
+        }
+
         
         static const size_t max_grid_z = []{
             int device_id = 0;
