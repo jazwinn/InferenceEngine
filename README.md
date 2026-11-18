@@ -175,6 +175,22 @@ Then run `build-vs/Release/inference.exe` from the repository root, so the relat
 
 The `device` constant in `main.cpp` picks the device and is set to `tensor::Device::CUDA`. Loading peaks at about 10 GB of host memory. On the GPU, the fp32 weights take about 4.9 GB of device memory; if allocation fails, lower `contextSize`. On the CPU, the first reply takes many minutes.
 
+### Using a release as a library
+
+Pushing a tag such as `v0.1.0` runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which publishes two packages on the [Releases](../../releases) page:
+
+- `InferenceEngine-<tag>-windows-x64-cpu.zip`: headers and CMake config (the CPU backend is header-only)
+- `InferenceEngine-<tag>-windows-x64-cuda.zip`: the same, plus the CUDA kernel library (Release and Debug), built for Turing through Blackwell GPUs
+
+Unzip one and point CMake at it:
+
+```cmake
+find_package(InferenceEngine CONFIG REQUIRED)   # -DCMAKE_PREFIX_PATH=<unzipped folder>
+target_link_libraries(app PRIVATE InferenceEngine::Models InferenceEngine::Generation)
+```
+
+The consumer provides `nlohmann-json` and `pcre2` (e.g. via vcpkg) and, for the CUDA package, the CUDA Toolkit. To build a package locally: `cmake --install <build dir> --config Release --prefix <dir>`.
+
 ## Roadmap
 
 **Performance** is the current focus.

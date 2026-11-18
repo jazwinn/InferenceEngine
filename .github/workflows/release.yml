@@ -1,0 +1,144 @@
+# Builds the InferenceEngine package (headers + CMake config, plus the CUDA
+# kernel library for the CUDA variant) and publishes both variants as assets
+# of a GitHub Release:
+#
+#   InferenceEngine-<tag>-windows-x64-cpu.zip
+#   InferenceEngine-<tag>-windows-x64-cuda.zip
+#
+# Trigger: push a tag such as v0.1.0, or run the workflow manually with a tag.
+# Consumers (e.g. ModelGraph) download the latest release and use
+#   find_package(InferenceEngine CONFIG)
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish (created on the selected commit if it does not exist), e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  CUDA_VERSION: '13.0.0'
+  # Real code for each supported GPU generation (Turing .. Blackwell) and PTX
+  # for the newest, so future GPUs can JIT-compile it.
+  CUDA_ARCHS: '75-real;80-real;86-real;89-real;90-real;100-real;120'
+  # Must match "builtin-baseline" in vcpkg.json.
+  VCPKG_COMMIT: 522253caf47268c1724f486a035e927a42a90092
+
+jobs:
+  package:
+    name: package (${{ matrix.variant }})
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [cpu, cuda]
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Package version
+        shell: pwsh
+        run: |
+          # v1.2.3 or v1.2.3-rc1 -> 1.2.3 for the CMake package version file
+          if ($env:TAG -notmatch '^v?(\d+\.\d+\.\d+)') { throw "Tag '$env:TAG' is not like v1.2.3" }
+          "IE_VERSION=$($Matches[1])" >> $env:GITHUB_ENV
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-${{ runner.os }}-
+
+      - name: vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+          git -C $env:VCPKG_ROOT checkout $env:VCPKG_COMMIT
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+
+      - name: CUDA toolkit
+        if: matrix.variant == 'cuda'
+        shell: pwsh
+        run: |
+          $v = $env:CUDA_VERSION
+          $mm = ($v.Split('.')[0..1]) -join '.'
+          $url = "https://developer.download.nvidia.com/compute/cuda/$v/network_installers/cuda_${v}_windows_network.exe"
+          Invoke-WebRequest $url -OutFile cuda_installer.exe
+          # Only what the build needs: the compiler, runtime, cuBLAS and headers.
+          $parts = @('nvcc', 'cudart', 'cublas', 'cublas_dev', 'thrust', 'visual_studio_integration') | ForEach-Object { "${_}_$mm" }
+          $p = Start-Process -FilePath .\cuda_installer.exe -ArgumentList (@('-s') + $parts) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "CUDA installer failed with exit code $($p.ExitCode)" }
+          $root = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$mm"
+          if (-not (Test-Path "$root\bin\nvcc.exe")) { throw "nvcc not found under $root" }
+          "CUDA_PATH=$root" >> $env:GITHUB_ENV
+          "$root\bin" >> $env:GITHUB_PATH
+          "$root\bin\x64" >> $env:GITHUB_PATH
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $cuda = if ('${{ matrix.variant }}' -eq 'cuda') { 'ON' } else { 'OFF' }
+          cmake -S . -B build -G "Ninja Multi-Config" `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" `
+            "-DIE_ENABLE_CUDA=$cuda" `
+            "-DIE_CUDA_ARCHITECTURES=$env:CUDA_ARCHS" `
+            "-DIE_PACKAGE_VERSION=$env:IE_VERSION" `
+            -DBUILD_TESTING=OFF
+
+      - name: Build (Release and Debug)
+        run: |
+          cmake --build build --config Release
+          cmake --build build --config Debug
+
+      - name: Package
+        shell: pwsh
+        run: |
+          cmake --install build --config Release --prefix package
+          cmake --install build --config Debug --prefix package
+          "InferenceEngine $env:TAG (${{ matrix.variant }}) built from $env:GITHUB_SHA" | Out-File -Encoding utf8 package\VERSION.txt
+          Compress-Archive -Path package\* -DestinationPath "InferenceEngine-$env:TAG-windows-x64-${{ matrix.variant }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.variant }}
+          path: InferenceEngine-*.zip
+          if-no-files-found: error
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l dist
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.zip --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/*.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "InferenceEngine $TAG" --generate-notes
+          fi
