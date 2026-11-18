@@ -41,7 +41,8 @@ jobs:
       matrix:
         variant: [cpu, cuda]
     env:
-      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+      # Not VCPKG_ROOT: msvc-dev-cmd overwrites that with Visual Studio's bundled vcpkg.
+      IE_VCPKG: ${{ github.workspace }}\vcpkg
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-cache
 
     steps:
@@ -69,9 +70,9 @@ jobs:
       - name: vcpkg
         shell: pwsh
         run: |
-          git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
-          git -C $env:VCPKG_ROOT checkout $env:VCPKG_COMMIT
-          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          git clone https://github.com/microsoft/vcpkg $env:IE_VCPKG
+          git -C $env:IE_VCPKG checkout $env:VCPKG_COMMIT
+          & "$env:IE_VCPKG\bootstrap-vcpkg.bat" -disableMetrics
           New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
 
       - name: CUDA toolkit
@@ -82,8 +83,8 @@ jobs:
           $mm = ($v.Split('.')[0..1]) -join '.'
           $url = "https://developer.download.nvidia.com/compute/cuda/$v/network_installers/cuda_${v}_windows_network.exe"
           Invoke-WebRequest $url -OutFile cuda_installer.exe
-          # Only what the build needs: the compiler, runtime, cuBLAS and headers.
-          $parts = @('nvcc', 'cudart', 'cublas', 'cublas_dev', 'thrust', 'visual_studio_integration') | ForEach-Object { "${_}_$mm" }
+          # Only what the build needs: the compiler (nvcc + crt + nvvm + ptx compiler), runtime, cuBLAS and headers.
+          $parts = @('nvcc', 'crt', 'nvvm', 'nvptxcompiler', 'cudart', 'cublas', 'cublas_dev', 'thrust', 'visual_studio_integration') | ForEach-Object { "${_}_$mm" }
           $p = Start-Process -FilePath .\cuda_installer.exe -ArgumentList (@('-s') + $parts) -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "CUDA installer failed with exit code $($p.ExitCode)" }
           $root = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$mm"
@@ -97,7 +98,7 @@ jobs:
         run: |
           $cuda = if ('${{ matrix.variant }}' -eq 'cuda') { 'ON' } else { 'OFF' }
           cmake -S . -B build -G "Ninja Multi-Config" `
-            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:IE_VCPKG\scripts\buildsystems\vcpkg.cmake" `
             "-DIE_ENABLE_CUDA=$cuda" `
             "-DIE_CUDA_ARCHITECTURES=$env:CUDA_ARCHS" `
             "-DIE_PACKAGE_VERSION=$env:IE_VERSION" `
