@@ -28,7 +28,10 @@ if(IE_ENABLE_CUDA)
 endif()
 
 if(MSVC)
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/W4> $<$<COMPILE_LANGUAGE:CXX>:/permissive-> $<$<COMPILE_LANGUAGE:CXX>:/utf-8>)
+    # /bigobj: the header-only templates give main.cpp more sections than a
+    # default object file allows in Debug builds (MSVC error C1128).
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/W4> $<$<COMPILE_LANGUAGE:CXX>:/permissive-> $<$<COMPILE_LANGUAGE:CXX>:/utf-8>
+                        $<$<COMPILE_LANGUAGE:CXX>:/bigobj>)
 else()
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall> $<$<COMPILE_LANGUAGE:CXX>:-Wextra>)
 endif()
