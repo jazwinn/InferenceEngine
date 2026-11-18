@@ -4,6 +4,8 @@ cmake_minimum_required(VERSION 3.24)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/vcpkg.cmake)
 
 option(IE_ENABLE_CUDA "Build the CUDA backend" ON)
+set(IE_CUDA_ARCHITECTURES "native" CACHE STRING "GPU architectures for the CUDA kernels (e.g. native, or 75;80;86;89;90)")
+set(IE_PACKAGE_VERSION "0.0.0" CACHE STRING "Version recorded in the installed CMake package (set by the release workflow)")
 
 project(InferenceEngine LANGUAGES CXX)
 
@@ -41,6 +43,14 @@ add_subdirectory(Reflection)
 add_subdirectory(Serialize)
 add_subdirectory(Models)
 add_subdirectory(UI)
+
+# `cmake --install` produces a relocatable package (headers, the CUDA kernel
+# library and InferenceEngineConfig.cmake) for projects that consume a
+# release instead of the source. See cmake/Install.cmake.
+option(IE_INSTALL "Generate install rules for the InferenceEngine package" ${PROJECT_IS_TOP_LEVEL})
+if(IE_INSTALL)
+    include(cmake/Install.cmake)
+endif()
 
 add_executable(inference main.cpp)
 target_link_libraries(inference PRIVATE

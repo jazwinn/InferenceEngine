@@ -2,7 +2,7 @@ file(GLOB CUDA_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cu
 )
 
-file(GLOB CUDA_HEADERS CONFIGURE_DEPENDS
+file(GLOB_RECURSE CUDA_HEADERS CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cuh
 )
@@ -13,8 +13,11 @@ find_package(CUDAToolkit REQUIRED)
 add_library(cuda_kernels STATIC ${CUDA_SOURCES})
 add_library(InferenceEngine::CUDA ALIAS cuda_kernels)
 
+# "native" targets the GPU in this machine; release builds (which run on CI
+# machines without a GPU) pass an explicit list via IE_CUDA_ARCHITECTURES.
 set_target_properties(cuda_kernels PROPERTIES
-    CUDA_ARCHITECTURES native
+    CUDA_ARCHITECTURES "${IE_CUDA_ARCHITECTURES}"
+    EXPORT_NAME CUDA
 )
 
 target_link_libraries(cuda_kernels PRIVATE
