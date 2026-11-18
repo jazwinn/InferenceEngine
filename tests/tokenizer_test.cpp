@@ -38,6 +38,17 @@ TEST(TokenizerBPE, AcceptsMergesAsPairs) {
     EXPECT_EQ(strings.Encode("abcab"), pairs.Encode("abcab"));
 }
 
+TEST(TokenizerBPE, ModelWithoutTypeIsTreatedAsBpe) {
+    // Older tokenizers versions (e.g. openai-community/gpt2) omit model.type.
+    json untyped = TinyTokenizer();
+    untyped["model"].erase("type");
+    EXPECT_EQ(Tokenizer::FromJson(untyped).Encode("abc"), Tokenizer::FromJson(TinyTokenizer()).Encode("abc"));
+
+    json unknown = TinyTokenizer();
+    unknown["model"]["type"] = "WordPiece";
+    EXPECT_THROW(Tokenizer::FromJson(unknown), std::runtime_error);
+}
+
 TEST(TokenizerBPE, IgnoreMergesUsesWholeWordsFromTheVocabulary) {
     EXPECT_EQ(Tokenizer::FromJson(TinyTokenizer(false)).Encode("abc"), (std::vector<int64_t>{2, 3}));
     EXPECT_EQ(Tokenizer::FromJson(TinyTokenizer(true)).Encode("abc"), (std::vector<int64_t>{4}));

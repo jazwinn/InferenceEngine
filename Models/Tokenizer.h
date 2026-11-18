@@ -305,7 +305,11 @@ namespace models
 
         void LoadModel(const json& model)
         {
-            const std::string type = TypeOf(model, "model");
+            // Files written by older `tokenizers` versions (e.g. the original
+            // openai-community/gpt2 tokenizer.json) omit the model type; a
+            // model with vocab and merges is BPE.
+            const bool untypedBpe = model.is_object() && !model.contains("type") && model.contains("vocab") && model.contains("merges");
+            const std::string type = untypedBpe ? "BPE" : TypeOf(model, "model");
             if (type != "BPE")
             {
                 throw Unsupported("model", type);
