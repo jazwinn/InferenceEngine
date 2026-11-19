@@ -64,6 +64,17 @@ target_link_libraries(inference PRIVATE
     InferenceEngine::UI
 )
 
+if(IE_ENABLE_CUDA)
+    add_executable(llama_bench bench/llama_bench.cpp)
+    target_link_libraries(llama_bench PRIVATE
+        InferenceEngine::Generation
+        InferenceEngine::NeuralNet
+        InferenceEngine::Serialize
+        InferenceEngine::Models
+        InferenceEngine::CUDA
+    )
+endif()
+
 include(CTest)
 if(BUILD_TESTING AND PROJECT_IS_TOP_LEVEL)
     add_subdirectory(tests)
