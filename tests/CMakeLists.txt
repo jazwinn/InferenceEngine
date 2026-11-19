@@ -52,7 +52,7 @@ target_compile_definitions(models_tests PRIVATE IE_SOURCE_DIR="${PROJECT_SOURCE_
 gtest_discover_tests(models_tests)
 
 if(IE_ENABLE_CUDA)
-    add_executable(cuda_tests CUDA/devicebuffer_test.cpp CUDA/matmul_test.cpp CUDA/tensor_device_test.cpp CUDA/module_device_test.cpp CUDA/linear_test.cpp CUDA/linear_device_test.cpp CUDA/activation_device_test.cpp CUDA/elementwise_device_test.cpp CUDA/mlp_device_test.cpp CUDA/reduce_device_test.cpp CUDA/norm_device_test.cpp CUDA/rope_device_test.cpp CUDA/embedding_device_test.cpp CUDA/allocator_test.cpp CUDA/kvcache_device_test.cpp CUDA/phase3_device_test.cpp CUDA/batched_matmul_device_test.cpp CUDA/attention_device_test.cpp)
+    add_executable(cuda_tests CUDA/devicebuffer_test.cpp CUDA/matmul_test.cpp CUDA/tensor_device_test.cpp CUDA/module_device_test.cpp CUDA/linear_test.cpp CUDA/linear_strided_test.cpp CUDA/linear_device_test.cpp CUDA/activation_device_test.cpp CUDA/elementwise_device_test.cpp CUDA/mlp_device_test.cpp CUDA/reduce_device_test.cpp CUDA/norm_device_test.cpp CUDA/rope_device_test.cpp CUDA/embedding_device_test.cpp CUDA/allocator_test.cpp CUDA/kvcache_device_test.cpp CUDA/phase3_device_test.cpp CUDA/batched_matmul_device_test.cpp CUDA/attention_device_test.cpp)
     target_link_libraries(cuda_tests PRIVATE
         InferenceEngine::CUDA
         InferenceEngine::Tensor
