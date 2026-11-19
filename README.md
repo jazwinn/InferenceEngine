@@ -198,7 +198,8 @@ The consumer provides `nlohmann-json` and `pcre2` (e.g. via vcpkg) and, for the 
 - [x] KV cache: reuse past keys/values so each step processes one token instead of the whole sequence
 - [x] CUDA backend: every op of the forward pass, including attention, on the GPU, with a caching allocator
 - [x] cuBLAS GEMM for single-batch `MatMul`
-- [ ] `Linear` kernel. `Linear` multiplies by a transposed (strided) weight view, so the inner loop jumps 8–32 KB per step and cannot vectorise. A contiguous row-dot-product kernel, or cuBLAS, is the single biggest win.
+- [x] cuBLAS GEMM for `Linear`. The transposed weight is passed as a `CUBLAS_OP_T` operand, so it is never copied, and the bias is broadcast into the output first and accumulated with `beta = 1`, so no separate add pass is needed.
+- [ ] cuBLAS strided-batched GEMM (`cublasGemmStridedBatchedEx`) for batched `MatMul`, so the per-head attention products leave the naive kernel
 - [ ] FlashAttention: fused, tiled attention that never builds the score matrix or a mask tensor. Then flash-decoding, which splits the KV sequence across blocks for single-token steps.
 - [ ] BF16 weights on the GPU, accumulating in fp32. This halves Llama 3.2 1B to about 2.5 GB.
 - [ ] Fused RMSNorm/LayerNorm kernels (one block per row reusing `BlockReduce`), replacing ~6 launches and 3 temporaries
