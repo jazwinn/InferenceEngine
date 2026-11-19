@@ -31,6 +31,14 @@ namespace cuda{
     void LaunchLinear(const DeviceBuffer<T>& dX, const DeviceBuffer<T>& dW, const DeviceBuffer<T>& dB, DeviceBuffer<T>& dY, size_t M, size_t in, size_t out);
 
     template <typename T>
+    void LaunchLinearDevice(const T* X, const T* W, const T* B, T* C,
+                            const std::vector<size_t>& batch,
+                            const std::vector<size_t>& X_batch_stride,
+                            const std::vector<size_t>& W_batch_stride,
+                            size_t rows, size_t inner, size_t cols,
+                            size_t X_rs, size_t X_cs, size_t W_rs, size_t W_cs);
+
+    template <typename T>
     void LaunchLinearDevice(const T* dX, const T* dW, const T* dB, T* dY, size_t M, size_t in, size_t out);
 
     template <typename T>

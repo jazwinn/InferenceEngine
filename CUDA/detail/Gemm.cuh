@@ -42,11 +42,12 @@ namespace cuda{
 
     template <typename In, typename Out = In>
     void Gemm(cublasOperation_t opB, cublasOperation_t opA, int m, int n, int k,
-              const In* B, int ldb, const In* A, int lda, Out* C, int ldc)
+              const In* B, int ldb, const In* A, int lda, Out* C, int ldc,
+              double beta_value = 0.0)
     {
         constexpr bool f64 = std::is_same_v<In, double>;
         using Scale = std::conditional_t<f64, double, float>;
-        const Scale alpha = 1, beta = 0;
+        const Scale alpha = 1, beta = static_cast<Scale>(beta_value);
 
         CUBLAS_CHECK(cublasGemmEx(Cublas(), opB, opA, m, n, k, &alpha,
                                   B, CudaType<In>(), ldb, A, CudaType<In>(), lda, &beta,
